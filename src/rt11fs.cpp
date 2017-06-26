@@ -33,10 +33,22 @@ auto rt11_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   return getFS()->readdir(path, buf, filler, offset, fi);
 }
 
+auto rt11_open(const char *path, struct fuse_file_info *fi)
+{
+  return getFS()->open(path, fi);
+}
+
+auto rt11_read(const char *path, char *buf, size_t count, off_t offset, struct fuse_file_info *fi)
+{
+  return getFS()->read(path, buf, count, offset, fi);
+}
+
 auto build_oper(struct fuse_operations *oper)
 {
   oper->getattr = &rt11_getattr;
   oper->readdir = &rt11_readdir;
+  oper->open = &rt11_open;
+  oper->read = &rt11_read;
 }
 
 auto usage(const string &program)

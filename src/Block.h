@@ -13,12 +13,14 @@ public:
   Block(int sector, int count);
 
   auto extractWord(int offset) -> uint16_t;
+  auto copyOut(int offset, int bytes, char *dest) -> void;
 
   auto getSector() { return sector; }
   auto getCount() { return count; }
 
   auto read(int fd) -> void;
   auto resize(int newCount, int fd) -> void;
+
 
   auto addRef() { return ++refcount; }
   auto release() { return --refcount; }

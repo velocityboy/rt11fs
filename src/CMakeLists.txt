@@ -4,6 +4,7 @@ add_executable (rt11fs
   Block.cpp
   BlockCache.cpp
   Directory.cpp
+  File.cpp
   FileSystem.cpp
   Rad50.cpp
   rt11fs.cpp

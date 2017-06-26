@@ -36,6 +36,19 @@ auto Block::read(int fd) -> void
   }
 }
 
+// Copy some data into an external buffer. The caller is
+// responsible for ensuring that all the data can be 
+// provided from this block.
+auto Block::copyOut(int offset, int bytes, char *dest) -> void
+{
+  if (offset + bytes > data.size()) {
+    throw FilesystemException {-EIO, "read past end of block"};
+  }
+
+  memcpy(dest, &data[offset], bytes);
+}
+
+
 // Resize the block to a new number of sectors. If the block is
 // growing, then fill the new space from the file system image.
 auto Block::resize(int newCount, int fd) -> void

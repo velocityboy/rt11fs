@@ -18,6 +18,7 @@ const uint16_t E_PROT = 0100000;        // entry is protected
 const uint16_t E_PRE  = 0000020;        // entry has prefix blocks
 }
 
+class Block;
 class BlockCache;
 
 struct DirEnt {
