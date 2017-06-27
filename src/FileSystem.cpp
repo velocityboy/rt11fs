@@ -54,7 +54,12 @@ auto FileSystem::getattr(const char *path, struct stat *stbuf) -> int
     auto err = getDirEnt(p, ent);
 
     if (err == 0) {
-      stbuf->st_mode = S_IFREG | 0444;
+      uint16_t perm = 0444;
+      if ((ent.status & Dir::E_READ) == 0) {
+        perm |= 0222;
+      }
+
+      stbuf->st_mode = S_IFREG | perm;
       stbuf->st_nlink = 1;
       stbuf->st_size = ent.length;
       stbuf->st_mtime = ent.create_time;
