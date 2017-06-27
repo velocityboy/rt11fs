@@ -28,6 +28,8 @@ auto File::read(char *buffer, size_t count, off_t offset) -> int
 
     blk->copyOut(secoffs, tocopy, buffer);
 
+    cache->putBlock(blk);
+
     buffer += tocopy;
     got += tocopy;
     offset += tocopy;
