@@ -130,7 +130,19 @@ auto Directory::getEnt(const DirScan &scan, DirEnt &ent) -> bool
   ent.status = dirblk->extractWord(entoffs + STATUS_WORD);
   ent.length = dirblk->extractWord(entoffs + TOTAL_LENGTH_WORD) * Block::SECTOR_SIZE;
   ent.sector0 = scan.datasec;
-  
+
+  struct tm tm;
+  memset(&tm, 0, sizeof(tm));
+
+  auto dateWord = dirblk->extractWord(entoffs + CREATION_DATE_WORD); 
+
+  auto age = (dateWord >> 14) & 03;  
+  tm.tm_mon = ((dateWord >> 10) & 017) - 1;
+  tm.tm_mday = (dateWord >> 5) & 037;
+  tm.tm_year = 72 + age * 32 + (dateWord & 037);
+
+  ent.create_time = mktime(&tm);  
+
   return true;
 }
 

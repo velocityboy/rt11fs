@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstdint>
+#include <ctime>
 #include <string>
 
 namespace RT11FS {
@@ -26,6 +27,7 @@ struct DirEnt {
   std::string name;
   int length;
   int sector0;
+  time_t create_time;
 };
 
 using Rad50Name = std::array<uint16_t, 3>;

@@ -57,6 +57,7 @@ auto FileSystem::getattr(const char *path, struct stat *stbuf) -> int
       stbuf->st_mode = S_IFREG | 0444;
       stbuf->st_nlink = 1;
       stbuf->st_size = ent.length;
+      stbuf->st_mtime = ent.create_time;
     }
 
     return err;
