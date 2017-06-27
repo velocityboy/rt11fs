@@ -6,6 +6,7 @@ add_executable (rt11fs
   Directory.cpp
   File.cpp
   FileSystem.cpp
+  LogUnimpl.cpp
   Rad50.cpp
   rt11fs.cpp
 )

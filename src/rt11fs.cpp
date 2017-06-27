@@ -1,4 +1,5 @@
 #include "FileSystem.h"
+#include "LogUnimpl.h"
 
 #include <fuse.h>
 #include <iostream>
@@ -45,6 +46,8 @@ auto rt11_read(const char *path, char *buf, size_t count, off_t offset, struct f
 
 auto build_oper(struct fuse_operations *oper)
 {
+  add_unimpl(oper);
+
   oper->getattr = &rt11_getattr;
   oper->readdir = &rt11_readdir;
   oper->open = &rt11_open;
