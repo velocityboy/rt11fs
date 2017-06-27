@@ -23,6 +23,7 @@ public:
   auto getDirectory() { return directory.get(); }
 
   auto getattr(const char *path, struct stat *stbuf) -> int;
+  auto statfs(const char *, struct statvfs *fs) -> int;
   auto readdir(
     const char *path, void *buf, fuse_fill_dir_t filler,
     off_t offset, struct fuse_file_info *fi) -> int;

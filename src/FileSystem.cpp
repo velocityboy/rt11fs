@@ -64,6 +64,20 @@ auto FileSystem::getattr(const char *path, struct stat *stbuf) -> int
   });
 }
 
+auto FileSystem::statfs(const char *path, struct statvfs *vfs) -> int
+{
+  return wrapper([this, path, vfs]() {
+    auto p = string {path};
+
+    if (p != "/") {
+      return -ENOENT;
+    }
+
+    return directory->statfs(vfs);
+  });
+}
+
+
 auto FileSystem::readdir(
   const char *path, void *buf, fuse_fill_dir_t filler,
   off_t offset, struct fuse_file_info *fi) -> int

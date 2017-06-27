@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <ctime>
+#include <fuse.h>
 #include <string>
 
 namespace RT11FS {
@@ -57,6 +58,7 @@ public:
   auto startScan() -> DirScan;
   auto moveNext(DirScan &scan) -> bool;
   auto moveNextFiltered(DirScan &scan, uint16_t mask) -> bool;
+  auto statfs(struct statvfs *vfs) -> int;
 
 private:
   BlockCache *cache;

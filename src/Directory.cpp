@@ -203,6 +203,47 @@ auto Directory::moveNextFiltered(DirScan &scan, uint16_t mask) -> bool
   return false;
 }
 
+auto Directory::statfs(struct statvfs *vfs) -> int
+{
+  memset(vfs, 0, sizeof(struct statvfs));
+  vfs->f_bsize = Block::SECTOR_SIZE;
+  vfs->f_frsize = Block::SECTOR_SIZE;
+  vfs->f_namemax = 10;
+
+  auto segs = dirblk->extractWord(TOTAL_SEGMENTS);
+  auto xtra = dirblk->extractWord(EXTRA_BYTES);
+  auto perseg = (Block::SECTOR_SIZE - FIRST_ENTRY_OFFSET) / (ENTRY_LENGTH + xtra);
+  auto inodes = perseg * segs;
+
+  vfs->f_blocks = cache->getVolumeSectors() - (FIRST_SEGMENT_SECTOR + segs * SECTORS_PER_SEGMENT);
+
+  auto scan = startScan();
+  auto ent = DirEnt {};
+    
+  auto usedinodes = 0;
+  auto usedblocks = 0;
+  auto freeblocks = 0;
+
+  while (moveNext(scan)) {
+    getEnt(scan, ent);
+    if ((ent.status & Dir::E_MPTY) != 0) {
+      freeblocks += ent.length;
+    } else {
+      usedblocks += ent.length;
+      usedinodes++;
+    }
+  }
+
+  vfs->f_bfree = freeblocks;
+  vfs->f_bavail = freeblocks;
+  vfs->f_files = inodes;
+  vfs->f_ffree = inodes - usedinodes;
+  vfs->f_favail = vfs->f_ffree;
+
+  return 0;
+}
+
+
 auto Directory::parseFilename(const std::string &name, Rad50Name &rad50) -> bool
 {
   auto base = string {};
