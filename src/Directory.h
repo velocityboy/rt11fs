@@ -23,15 +23,16 @@ const uint16_t E_PRE  = 0000020;        // entry has prefix blocks
 class Block;
 class BlockCache;
 
+using Rad50Name = std::array<uint16_t, 3>;
+
 struct DirEnt {
   uint16_t status;
+  Rad50Name rad50_name;
   std::string name;
   int length;
   int sector0;
   time_t create_time;
 };
-
-using Rad50Name = std::array<uint16_t, 3>;
 
 class DirScan 
 {

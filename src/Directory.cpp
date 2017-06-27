@@ -118,13 +118,17 @@ auto Directory::getEnt(const DirScan &scan, DirEnt &ent) -> bool
     return false;
   }
 
-  ent.name = Rad50::fromRad50(dirblk->extractWord(entoffs + FILENAME_WORDS));
-  ent.name += Rad50::fromRad50(dirblk->extractWord(entoffs + FILENAME_WORDS + 2));
+  for (auto i = 0; i < ent.rad50_name.size(); i++) {
+    ent.rad50_name[i] = dirblk->extractWord(entoffs + FILENAME_WORDS + i * sizeof(uint16_t));
+  }
+
+  ent.name = Rad50::fromRad50(ent.rad50_name[0]);
+  ent.name += Rad50::fromRad50(ent.rad50_name[1]);
 
   ent.name = rtrim(ent.name);
   ent.name += ".";
   
-  ent.name += Rad50::fromRad50(dirblk->extractWord(entoffs + FILENAME_WORDS + 4));
+  ent.name += Rad50::fromRad50(ent.rad50_name[2]);
   ent.name = rtrim(ent.name);
 
   ent.status = dirblk->extractWord(entoffs + STATUS_WORD);
