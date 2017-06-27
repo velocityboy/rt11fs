@@ -30,6 +30,7 @@ public:
   auto open(const char *path, struct fuse_file_info *fi) -> int;
   auto release(const char *path, struct fuse_file_info *fi) -> int;
   auto read(const char *path, char *buf, size_t count, off_t offset, struct fuse_file_info *fi) -> int;
+  auto ftruncate(const char *path, off_t size, struct fuse_file_info *fi) -> int;
 
 private:
   int fd;  
@@ -40,6 +41,7 @@ private:
   static auto wrapper(std::function<int(void)> fn) -> int;
   auto getDirEnt(const std::string &path, DirEnt &de) -> int;
   auto getEmptyFileSlot() -> int;
+  auto getHandle(int fh) -> File *;
 }; 
 
 };

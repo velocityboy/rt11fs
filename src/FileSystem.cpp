@@ -129,9 +129,7 @@ auto FileSystem::open(const char *path, struct fuse_file_info *fi) -> int
 auto FileSystem::release(const char *path, struct fuse_file_info *fi) -> int
 {
   return wrapper([this, fi]() {
-    if (fi->fh >= files.size() || files[fi->fh] == nullptr) {
-      return -EINVAL;
-    }
+    getHandle(fi->fh);
     files[fi->fh].reset();
     return 0;
   });
@@ -143,16 +141,14 @@ auto FileSystem::read(
   struct fuse_file_info *fi) -> int 
 {
   return wrapper([this, path, buf, count, offset, fi] {
-    if (fi->fh >= files.size()) {
-      return -EBADF;
-    }
+    return getHandle(fi->fh)->read(buf, count, offset);
+  });
+}
 
-    auto &fp = files.at(fi->fh);
-    if (fp == nullptr) {
-      return -EBADF;
-    }
-
-    return fp->read(buf, count, offset);
+auto FileSystem::ftruncate(const char *path, off_t size, struct fuse_file_info *fi) -> int
+{
+  return wrapper([this, size, fi]() {
+    return getHandle(fi->fh)->truncate(size);
   });
 }
 
@@ -205,6 +201,14 @@ auto FileSystem::getEmptyFileSlot() -> int
 
   files.push_back(nullptr);
   return files.size() - 1;
+}
+
+auto FileSystem::getHandle(int fh) -> File *
+{
+  if (fh < 0 || fh >= files.size() || files[fh] == nullptr) {
+    throw FilesystemException {-EBADF, "Invalid file handle"};
+  }
+  return files[fh].get();
 }
 
 }
