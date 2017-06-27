@@ -105,7 +105,7 @@ auto FileSystem::readdir(
 
 auto FileSystem::open(const char *path, struct fuse_file_info *fi) -> int
 {
-  return wrapper([this, path, fi]() -> int {
+  return wrapper([this, path, fi]() {
     auto ent = DirEnt {};
     auto err = getDirEnt(path, ent);
     if (err < 0) {
@@ -120,6 +120,18 @@ auto FileSystem::open(const char *path, struct fuse_file_info *fi) -> int
     return 0;
   });
 }
+
+auto FileSystem::release(const char *path, struct fuse_file_info *fi) -> int
+{
+  return wrapper([this, fi]() {
+    if (fi->fh >= files.size() || files[fi->fh] == nullptr) {
+      return -EINVAL;
+    }
+    files[fi->fh].reset();
+    return 0;
+  });
+}
+
 
 auto FileSystem::read(
   const char *path, char *buf, size_t count, off_t offset, 

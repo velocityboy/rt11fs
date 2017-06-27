@@ -59,6 +59,11 @@ auto rt11_read(const char *path, char *buf, size_t count, off_t offset, struct f
   return getFS()->read(path, buf, count, offset, fi);
 }
 
+auto rt11_release(const char *path, struct fuse_file_info *fi)
+{
+  return getFS()->release(path, fi);
+}
+
 auto build_oper(struct fuse_operations *oper)
 {
   add_unimpl(oper);
@@ -69,6 +74,7 @@ auto build_oper(struct fuse_operations *oper)
   oper->releasedir = &rt11_releasedir;
   oper->readdir = &rt11_readdir;
   oper->open = &rt11_open;
+  oper->release = &rt11_release;
   oper->read = &rt11_read;
 }
 
