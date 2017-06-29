@@ -15,6 +15,11 @@ File::File(BlockCache *cache, const DirEnt &dirent)
 {  
 }
 
+auto File::truncate(off_t size) -> int
+{
+  return -ENOSYS;
+}
+
 auto File::read(char *buffer, size_t count, off_t offset) -> int
 {
   auto end = offset + count;

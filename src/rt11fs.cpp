@@ -54,14 +54,19 @@ auto rt11_open(const char *path, struct fuse_file_info *fi)
   return getFS()->open(path, fi);
 }
 
-auto rt11_read(const char *path, char *buf, size_t count, off_t offset, struct fuse_file_info *fi)
-{
-  return getFS()->read(path, buf, count, offset, fi);
-}
-
 auto rt11_release(const char *path, struct fuse_file_info *fi)
 {
   return getFS()->release(path, fi);
+}
+
+auto rt11_ftruncate(const char *path, off_t size, struct fuse_file_info *fi) -> int
+{
+  return getFS()->ftruncate(path, size, fi);
+}
+
+auto rt11_read(const char *path, char *buf, size_t count, off_t offset, struct fuse_file_info *fi)
+{
+  return getFS()->read(path, buf, count, offset, fi);
 }
 
 auto build_oper(struct fuse_operations *oper)
@@ -75,6 +80,7 @@ auto build_oper(struct fuse_operations *oper)
   oper->readdir = &rt11_readdir;
   oper->open = &rt11_open;
   oper->release = &rt11_release;
+  oper->ftruncate = &rt11_ftruncate;
   oper->read = &rt11_read;
 }
 
