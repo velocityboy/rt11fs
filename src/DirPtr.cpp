@@ -20,6 +20,11 @@ auto DirPtr::offset(int delta) const -> int
   return segbase + FIRST_ENTRY_OFFSET + index * entrySize + delta;
 }
 
+auto DirPtr::getWord(int offs) const -> uint16_t
+{
+  return dirblk->extractWord(offset(offs));
+}
+
 auto DirPtr::operator++(int) -> DirPtr
 {
   DirPtr pre = *this;
@@ -44,11 +49,11 @@ auto DirPtr::increment() -> void
   }
 
   auto extra = dirblk->extractWord(EXTRA_BYTES);
-  auto status = dirblk->extractWord(offset(STATUS_WORD));
+  auto status = getWord(STATUS_WORD);
 
   // if it's not an end of segment marker
   if ((status & E_EOS) == 0) {
-    datasec += dirblk->extractWord(offset(TOTAL_LENGTH_WORD));
+    datasec += getWord(TOTAL_LENGTH_WORD);
     index++;
     return;
   }

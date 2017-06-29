@@ -1,6 +1,8 @@
 #ifndef __DIRPTR_H_
 #define __DIRPTR_H_
 
+#include <cstdint>
+
 namespace RT11FS {
 class Block;
 
@@ -13,6 +15,7 @@ public:
   auto afterEnd() const { return segment == 0; }
   auto offset(int delta = 0) const -> int;
   auto getDataSector() const { return datasec; }
+  auto getWord(int offs) const -> uint16_t;
 
   auto operator++(int) -> DirPtr;
 

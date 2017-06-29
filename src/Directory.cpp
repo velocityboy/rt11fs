@@ -46,15 +46,15 @@ auto Directory::getEnt(const std::string &name, DirEnt &ent) -> int
   auto ds = startScan();
 
   while (moveNext(ds)) {
-    auto status = dirblk->extractWord(ds.offset(STATUS_WORD));
+    auto status = ds.getWord(STATUS_WORD);
     if ((status & E_EOS) != 0) {
       continue;
     }
 
     if (
-      rad50Name[0] == dirblk->extractWord(ds.offset(FILENAME_WORDS)) &&
-      rad50Name[1] == dirblk->extractWord(ds.offset(FILENAME_WORDS + 2)) &&
-      rad50Name[2] == dirblk->extractWord(ds.offset(FILENAME_WORDS + 4))
+      rad50Name[0] == ds.getWord(FILENAME_WORDS) &&
+      rad50Name[1] == ds.getWord(FILENAME_WORDS + 2) &&
+      rad50Name[2] == ds.getWord(FILENAME_WORDS + 4)
     ) {
       break;
     }
@@ -82,7 +82,7 @@ auto Directory::getEnt(const DirPtr &ptr, DirEnt &ent) -> bool
   }
 
   for (auto i = 0; i < ent.rad50_name.size(); i++) {
-    ent.rad50_name[i] = dirblk->extractWord(ptr.offset(FILENAME_WORDS + i * sizeof(uint16_t)));
+    ent.rad50_name[i] = ptr.getWord(FILENAME_WORDS + i * sizeof(uint16_t));
   }
 
   ent.name = Rad50::fromRad50(ent.rad50_name[0]);
@@ -94,14 +94,14 @@ auto Directory::getEnt(const DirPtr &ptr, DirEnt &ent) -> bool
   ent.name += Rad50::fromRad50(ent.rad50_name[2]);
   ent.name = rtrim(ent.name);
 
-  ent.status = dirblk->extractWord(ptr.offset(STATUS_WORD));
-  ent.length = dirblk->extractWord(ptr.offset(TOTAL_LENGTH_WORD)) * Block::SECTOR_SIZE;
+  ent.status = ptr.getWord(STATUS_WORD);
+  ent.length = ptr.getWord(TOTAL_LENGTH_WORD) * Block::SECTOR_SIZE;
   ent.sector0 = ptr.getDataSector();
 
   struct tm tm;
   memset(&tm, 0, sizeof(tm));
 
-  auto dateWord = dirblk->extractWord(ptr.offset(CREATION_DATE_WORD)); 
+  auto dateWord = ptr.getWord(CREATION_DATE_WORD); 
 
   auto age = (dateWord >> 14) & 03;  
   tm.tm_mon = ((dateWord >> 10) & 017) - 1;
@@ -127,8 +127,7 @@ auto Directory::moveNext(DirPtr &ptr) -> bool
 auto Directory::moveNextFiltered(DirPtr &ptr, uint16_t mask) -> bool
 {
   while (moveNext(ptr)) {
-    auto status = dirblk->extractWord(ptr.offset(STATUS_WORD));
-    if ((status & mask) != 0) {
+    if ((ptr.getWord(STATUS_WORD) & mask) != 0) {
       return true;
     }
   }
