@@ -134,13 +134,13 @@ auto Directory::getEnt(const DirPtr &ptr, DirEnt &ent) -> bool
     ent.rad50_name[i] = ptr.getWord(FILENAME_WORDS + i * sizeof(uint16_t));
   }
 
-  ent.name = Rad50::fromRad50(ent.rad50Name[0]);
-  ent.name += Rad50::fromRad50(ent.rad50Name[1]);
+  ent.name = Rad50::fromRad50(ent.rad50_name[0]);
+  ent.name += Rad50::fromRad50(ent.rad50_name[1]);
 
   ent.name = rtrim(ent.name);
   ent.name += ".";
   
-  ent.name += Rad50::fromRad50(ent.rad50Name[2]);
+  ent.name += Rad50::fromRad50(ent.rad50_name[2]);
   ent.name = rtrim(ent.name);
 
   ent.status = ptr.getWord(STATUS_WORD);
@@ -243,6 +243,12 @@ auto Directory::statfs(struct statvfs *vfs) -> int
   return 0;
 }
 
+auto Directory::truncate(const DirEnt &de, off_t newSize) -> int
+{
+  return -ENOSYS;
+}
+
+#if TRUNCATE_CODE
 auto Directory::truncate(const DirEnt &de, off_t newSize) -> int
 {
   auto ds = findEnt(de);
@@ -405,6 +411,7 @@ auto Directory::firstOfSegment(int segment) -> DirScan
 
   return ds;
 } 
+#endif
 
 /**
  * Parse a filename into RT11 RAD50 representation

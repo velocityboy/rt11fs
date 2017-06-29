@@ -43,6 +43,7 @@ private:
   BlockCache *cache;
   Block *dirblk;
 
+#if TRUNCATE_CODE
   auto findEnt(const DirEnt &ent) -> DirScan;
   auto shrinkEntry(const DirScan &ds, int newSize) -> int;
   auto insertEmptyAt(const DirScan &ds) -> bool;
@@ -51,7 +52,8 @@ private:
   auto lastSegmentEntry(int segmentIndex) -> int;
   auto offsetOfEntry(int segment, int index) -> int;
   auto firstOfSegment(int segment) -> DirScan;
-  static auto parseFilename(const std::string &name, Rad50Name &rad50) -> bool;
+#endif
+  static auto parseFilename(const std::string &name, Dir::Rad50Name &rad50) -> bool;
 };
 }
 
