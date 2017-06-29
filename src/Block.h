@@ -13,7 +13,12 @@ public:
   Block(int sector, int count);
 
   auto extractWord(int offset) -> uint16_t;
+
   auto copyOut(int offset, int bytes, char *dest) -> void;
+  auto copyWithinBlock(int sourceOffset, int destOffset, int count) -> void;
+
+  auto setByte(int offset, uint8_t value) -> void;
+  auto setWord(int offset, uint16_t value) -> void;
 
   auto getSector() { return sector; }
   auto getCount() { return count; }
@@ -29,6 +34,7 @@ private:
   int sector;
   int count;
   int refcount;
+  bool dirty;
   std::vector<uint8_t> data;
 };
 }

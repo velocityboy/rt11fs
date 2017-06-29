@@ -148,7 +148,9 @@ auto FileSystem::read(
 auto FileSystem::ftruncate(const char *path, off_t size, struct fuse_file_info *fi) -> int
 {
   return wrapper([this, size, fi]() {
-    return getHandle(fi->fh)->truncate(size);
+    return directory->truncate(
+      getHandle(fi->fh)->getDirEnt(),
+      size);
   });
 }
 

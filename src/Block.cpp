@@ -11,6 +11,7 @@ namespace RT11FS {
 Block::Block(int sector, int count)
   : sector(sector)
   , count(count)
+  , dirty(false)
 {
   data.resize(count * SECTOR_SIZE);
 }
@@ -19,6 +20,21 @@ Block::Block(int sector, int count)
 auto Block::extractWord(int offset) -> uint16_t
 {
   return data.at(offset) | (data.at(offset + 1) << 8);
+}
+
+// set a byte
+auto Block::setByte(int offset, uint8_t value) -> void
+{
+  data.at(offset) = value;
+  dirty = true;
+}
+
+// set a word
+auto Block::setWord(int offset, uint16_t value) -> void
+{
+  data.at(offset) = value & 0377;
+  data.at(offset + 1) = (value >> 8) & 0377;
+  dirty = true;
 }
 
 // Read the contents of the file system image into the block.
@@ -34,6 +50,8 @@ auto Block::read(int fd) -> void
   if (::read(fd, &data[0], toRead) != toRead) {
     throw FilesystemException {-EIO, "could not read full block"};
   }
+
+  dirty = false;
 }
 
 // Copy some data into an external buffer. The caller is
@@ -48,6 +66,30 @@ auto Block::copyOut(int offset, int bytes, char *dest) -> void
   memcpy(dest, &data[offset], bytes);
 }
 
+// Copy data around within the block. Safe even if the ranges overlap.
+auto Block::copyWithinBlock(int sourceOffset, int destOffset, int count) -> void
+{
+  if (
+    // all parameters must be positive
+    sourceOffset < 0 || 
+    destOffset < 0 || 
+    count <= 0 || 
+    // these check for integer overflow
+    sourceOffset + count <= 0 ||
+    destOffset + count <= 0 ||
+    // can't run off end of block
+    sourceOffset + count > data.size() ||
+    destOffset + count > data.size()) {
+    throw FilesystemException {-EIO, "invalid copy ranges for moving data inside block"};    
+  }
+
+  ::memmove(
+    &data[destOffset],
+    &data[sourceOffset],
+    count);
+
+  dirty = true;  
+}
 
 // Resize the block to a new number of sectors. If the block is
 // growing, then fill the new space from the file system image.

@@ -6,6 +6,7 @@
 #include <ctime>
 #include <fuse.h>
 #include <string>
+#include <vector>
 
 namespace RT11FS {
 
@@ -27,7 +28,7 @@ using Rad50Name = std::array<uint16_t, 3>;
 
 struct DirEnt {
   uint16_t status;
-  Rad50Name rad50_name;
+  Rad50Name rad50Name;
   std::string name;
   int length;
   int sector0;
@@ -37,14 +38,18 @@ struct DirEnt {
 class DirScan 
 {
 public:
-  DirScan();
+  DirScan(int entrySize);
+
+  static auto firstOfSegment(int seg) -> DirScan;
 
   auto beforeStart() const { return segment == -1; }
   auto afterEnd() const { return segment == 0; }
+  auto offset(int delta = 0) const -> int;
 
+  int entrySize;
   int segment;
   int segbase;
-  int offset;
+  int index;
   int datasec;  
 };
 
@@ -60,11 +65,21 @@ public:
   auto moveNext(DirScan &scan) -> bool;
   auto moveNextFiltered(DirScan &scan, uint16_t mask) -> bool;
   auto statfs(struct statvfs *vfs) -> int;
+  auto truncate(const DirEnt &ent, off_t size) -> int;
 
 private:
+  int entrySize;
   BlockCache *cache;
   Block *dirblk;
 
+  auto findEnt(const DirEnt &ent) -> DirScan;
+  auto shrinkEntry(const DirScan &ds, int newSize) -> int;
+  auto insertEmptyAt(const DirScan &ds) -> bool;
+  auto maxEntriesPerSegment() -> int;
+  auto isSegmentFull(int segmentIndex) -> bool;
+  auto lastSegmentEntry(int segmentIndex) -> int;
+  auto offsetOfEntry(int segment, int index) -> int;
+  auto firstOfSegment(int segment) -> DirScan;
   static auto parseFilename(const std::string &name, Rad50Name &rad50) -> bool;
 };
 }
