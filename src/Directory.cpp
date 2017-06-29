@@ -85,6 +85,26 @@ auto Directory::getEnt(const std::string &name, DirEnt &ent) -> int
     return -EINVAL;
   }
 
+  auto dirp = getDirPointer(rad50Name);
+
+  return getEnt(dirp, ent) ? 0 : -ENOENT;
+}
+
+/** 
+ * Retrieve the directory entry for a named file
+ *
+ * Scans the directory looking for the named file and fills in `ent'.
+ * Will return entries for any object other than end of segment (such as 
+ * temporary entries.)
+ * 
+ * @param name the name of the file to search for, in Rad50
+ * @param ent on success, the directory entry for `name'.
+ * @return 0 on success or a negated errno.
+ * @retval -EINVAL if the filename cannot be parsed
+ * @retval -ENOENT if the filename is not found in the directory
+ */
+auto Directory::getDirPointer(const Dir::Rad50Name &name) -> DirPtr
+{
   auto ds = startScan();
 
   while (++ds) {
@@ -94,15 +114,15 @@ auto Directory::getEnt(const std::string &name, DirEnt &ent) -> int
     }
 
     if (
-      rad50Name[0] == ds.getWord(FILENAME_WORDS) &&
-      rad50Name[1] == ds.getWord(FILENAME_WORDS + 2) &&
-      rad50Name[2] == ds.getWord(FILENAME_WORDS + 4)
+      name[0] == ds.getWord(FILENAME_WORDS) &&
+      name[1] == ds.getWord(FILENAME_WORDS + 2) &&
+      name[2] == ds.getWord(FILENAME_WORDS + 4)
     ) {
       break;
     }
   }
 
-  return getEnt(ds, ent) ? 0 : -ENOENT;
+  return ds;
 }
 
 static auto rtrim(const string &str)
