@@ -5,13 +5,18 @@
 
 #include <cerrno>
 
-
 using std::string;
-
 
 namespace RT11FS {
 using namespace Dir;
 
+/** 
+ * Constructor for a directory.
+ *
+ * Does basic validation on the directory and will throw an exception on any errors.
+ *
+ * @param cache the block cache of the volume containing the directory data.
+ */
 Directory::Directory(BlockCache *cache)
   : cache(cache)
   , dirblk(nullptr)
@@ -29,6 +34,9 @@ Directory::Directory(BlockCache *cache)
   cache->resizeBlock(dirblk, totseg * SECTORS_PER_SEGMENT);
 }
 
+/** 
+ * Destructor for a directory
+ */
 Directory::~Directory()
 {
   if (dirblk) {
@@ -36,6 +44,19 @@ Directory::~Directory()
   }
 }
 
+/** 
+ * Retrieve the directory entry for a named file
+ *
+ * Scans the directory looking for the named file and fills in `ent'.
+ * Will return entries for any object other than end of segment (such as 
+ * temporary entries.)
+ * 
+ * @param name the name of the file to search for.
+ * @param ent on success, the directory entry for `name'.
+ * @return 0 on success or a negated errno.
+ * @retval -EINVAL if the filename cannot be parsed
+ * @retval -ENOENT if the filename is not found in the directory
+ */
 auto Directory::getEnt(const std::string &name, DirEnt &ent) -> int
 {
   auto rad50Name = Rad50Name {};
@@ -45,7 +66,7 @@ auto Directory::getEnt(const std::string &name, DirEnt &ent) -> int
 
   auto ds = startScan();
 
-  while (moveNext(ds)) {
+  while (++ds) {
     auto status = ds.getWord(STATUS_WORD);
     if ((status & E_EOS) != 0) {
       continue;
@@ -75,6 +96,13 @@ static auto rtrim(const string &str)
   return str.substr(0, i + 1);
 }
 
+/** 
+ * Retrieve the directory entry from a directory pointer
+ *
+ * @param ptr A valid pointer into the directory
+ * @param ent on success, the directory entry for `name'
+ * @return true on success or false if the directory pointer is invalid
+ */
 auto Directory::getEnt(const DirPtr &ptr, DirEnt &ent) -> bool
 {
   if (ptr.afterEnd()) {
@@ -113,20 +141,33 @@ auto Directory::getEnt(const DirPtr &ptr, DirEnt &ent) -> bool
   return true;
 }
 
+/** 
+ * Starts a scan of the directory
+ *
+ * The returned directory pointer will be pointed just before the first entry
+ * and must therefore be incremented before being dereferenced.
+ *
+ * @return an initialized directory pointer
+ */
 auto Directory::startScan() -> DirPtr
 {
   return DirPtr {dirblk};
 }
 
-auto Directory::moveNext(DirPtr &ptr) -> bool
-{
-  ptr++;
-  return !ptr.afterEnd();
-}
-
+/** 
+ * Scan for a directory entry with a specified bit set
+ *
+ * The pointer will be moved through the directory until an entry is found
+ * that has *any* of the bits in `mask' set in the status word.
+ *
+ * @param ptr a pointer that will be advanced to a matching entry
+ * @param mask a mask of bits to search for in the status word
+ *
+ * @return success
+ */
 auto Directory::moveNextFiltered(DirPtr &ptr, uint16_t mask) -> bool
 {
-  while (moveNext(ptr)) {
+  while (++ptr) {
     if ((ptr.getWord(STATUS_WORD) & mask) != 0) {
       return true;
     }
@@ -135,6 +176,12 @@ auto Directory::moveNextFiltered(DirPtr &ptr, uint16_t mask) -> bool
   return false;
 }
 
+/**
+ * Returns metadata about the file system
+ * 
+ * @param vfs the struct to fill with data about the volume's file system.
+ * @return 0 for success or a negated errno.
+ */
 auto Directory::statfs(struct statvfs *vfs) -> int
 {
   memset(vfs, 0, sizeof(struct statvfs));
@@ -149,15 +196,15 @@ auto Directory::statfs(struct statvfs *vfs) -> int
 
   vfs->f_blocks = cache->getVolumeSectors() - (FIRST_SEGMENT_SECTOR + segs * SECTORS_PER_SEGMENT);
 
-  auto scan = startScan();
+  auto ptr = startScan();
   auto ent = DirEnt {};
     
   auto usedinodes = 0;
   auto usedblocks = 0;
   auto freeblocks = 0;
 
-  while (moveNext(scan)) {
-    getEnt(scan, ent);
+  while (++ptr) {
+    getEnt(ptr, ent);
     if ((ent.status & Dir::E_MPTY) != 0) {
       freeblocks += ent.length;
     } else {
@@ -175,7 +222,18 @@ auto Directory::statfs(struct statvfs *vfs) -> int
   return 0;
 }
 
-
+/**
+ * Parse a filename into RT11 RAD50 representation
+ *
+ * The filename must contain from 1 to 6 RAD50 characters. Optionally,
+ * it may be suffixed with a dot and an extension (0 to 3 RAD50 characters).
+ * The file system is case sensitive and lower case values are not in
+ * the RAD50 character set, so lower case filenames will not parse.
+ * 
+ * @param name the filename to parse
+ * @param rad50 on success, will contain the parsed filename
+ * @return true on success
+ */
 auto Directory::parseFilename(const std::string &name, Rad50Name &rad50) -> bool
 {
   auto base = string {};

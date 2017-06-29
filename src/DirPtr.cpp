@@ -5,6 +5,10 @@
 namespace RT11FS {
 using namespace Dir;
 
+/**
+ * Construct a directory pointer
+ * @param dirblk the block containing the entire directory.
+ */
 DirPtr::DirPtr(Block *dirblk)
   : dirblk(dirblk)
   , entrySize(ENTRY_LENGTH + dirblk->extractWord(EXTRA_BYTES))
@@ -15,16 +19,47 @@ DirPtr::DirPtr(Block *dirblk)
 {
 }
 
+/**
+ * Compute the offset of a field in the referenced entry.
+ *
+ * Computes the offset of a field in the entry referenced by this pointer.
+ * The returned offset is relative to the start of the entire directory.
+ *
+ * @param delta the offset into the entry.
+ * @return the offset into the referenced entry
+ */
 auto DirPtr::offset(int delta) const -> int
 {
   return segbase + FIRST_ENTRY_OFFSET + index * entrySize + delta;
 }
 
+/**
+ * Return a word from the current entry.
+ *
+ * @param delta the offset into the entry.
+ * @return the word value at the given offset
+ */
 auto DirPtr::getWord(int offs) const -> uint16_t
 {
   return dirblk->extractWord(offset(offs));
 }
 
+/**
+ * Move the pointer to the next entry.
+ *
+ * @return the incremented entry
+ */
+auto DirPtr::operator++() -> DirPtr &
+{
+  increment();
+  return *this;
+}
+
+/**
+ * Move the pointer to the next entry.
+ *
+ * @return the original entry
+ */
 auto DirPtr::operator++(int) -> DirPtr
 {
   DirPtr pre = *this;
@@ -33,6 +68,10 @@ auto DirPtr::operator++(int) -> DirPtr
   return pre;
 }
 
+/**
+ * Move the pointer to the next entry.
+ * If the pointer is already past the end, nothing will change.
+ */
 auto DirPtr::increment() -> void
 {
   if (afterEnd()) {

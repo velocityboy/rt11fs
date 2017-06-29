@@ -17,15 +17,21 @@ public:
   auto getDataSector() const { return datasec; }
   auto getWord(int offs) const -> uint16_t;
 
+  auto operator++() -> DirPtr &;
   auto operator++(int) -> DirPtr;
 
+  /**
+   * Check if the pointer points to a valid entry
+   */
+  operator bool() const { return !beforeStart() && !afterEnd(); }
+
 private:
-  Block *dirblk;
-  int entrySize;
-  int segment;
-  int index;
-  int segbase;
-  int datasec;
+  Block *dirblk;      /*!< Pointer to a block that contains the entire directory */
+  int entrySize;      /*!< The size of a directory entry, including any extra bytes */
+  int segment;        /*!< The one-based index of the segment containing the pointed to entry */
+  int index;          /*!< The zero-based index of the entry within its containing segment */
+  int segbase;        /*!< The offset of the current segment in the directory block */
+  int datasec;        /*!< The first data block of the referenced file */
 
   auto increment() -> void;
 };

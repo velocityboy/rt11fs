@@ -16,12 +16,12 @@ class Block;
 class BlockCache;
 
 struct DirEnt {
-  uint16_t status;
-  Dir::Rad50Name rad50_name;
-  std::string name;
-  int length;
-  int sector0;
-  time_t create_time;
+  uint16_t status;              /*!< The status word of the entry */
+  Dir::Rad50Name rad50_name;    /*!< The file name encoded as Rad50 */
+  std::string name;             /*!< The file name as a printable string */
+  int length;                   /*!< The length of the file in bytes */
+  int sector0;                  /*!< The first data of the file */
+  time_t create_time;           /*!< The creation time of the file */
 };
 
 class Directory
@@ -33,7 +33,6 @@ public:
   auto getEnt(const std::string &name, DirEnt &ent) -> int;
   auto getEnt(const DirPtr &ptr, DirEnt &ent) -> bool;
   auto startScan() -> DirPtr;
-  auto moveNext(DirPtr &ptr) -> bool;
   auto moveNextFiltered(DirPtr &ptr, uint16_t mask) -> bool;
   auto statfs(struct statvfs *vfs) -> int;
 
