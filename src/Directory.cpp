@@ -3,6 +3,7 @@
 #include "FilesystemException.h"
 #include "Rad50.h"
 
+#include <cassert>
 #include <cerrno>
 
 using std::string;
@@ -32,6 +33,26 @@ Directory::Directory(BlockCache *cache)
   }
 
   cache->resizeBlock(dirblk, totseg * SECTORS_PER_SEGMENT);
+
+  auto extra = dirblk->extractWord(EXTRA_BYTES);
+  auto segment = 1;
+
+  // sanity: the extra bytes word had better be the same across all dir segments
+  // (it's an attribute set when the directory is created.)
+  while (segment) {
+    auto base = (FIRST_ENTRY_OFFSET + (segment - 1) * SECTORS_PER_SEGMENT) * Block::SECTOR_SIZE;
+    auto thisExtra = dirblk->extractWord(base + EXTRA_BYTES);
+    if (thisExtra != extra) {
+      throw FilesystemException {-EINVAL, "directory segments are not consistent"};
+    }
+
+    segment = dirblk->extractWord(base + NEXT_SEGMENT);
+    if (segment > totseg) {
+      throw FilesystemException {-EINVAL, "directory segment list is corrupt"};
+    }
+  }
+
+  entrySize = ENTRY_LENGTH + extra;
 }
 
 /** 
@@ -113,13 +134,13 @@ auto Directory::getEnt(const DirPtr &ptr, DirEnt &ent) -> bool
     ent.rad50_name[i] = ptr.getWord(FILENAME_WORDS + i * sizeof(uint16_t));
   }
 
-  ent.name = Rad50::fromRad50(ent.rad50_name[0]);
-  ent.name += Rad50::fromRad50(ent.rad50_name[1]);
+  ent.name = Rad50::fromRad50(ent.rad50Name[0]);
+  ent.name += Rad50::fromRad50(ent.rad50Name[1]);
 
   ent.name = rtrim(ent.name);
   ent.name += ".";
   
-  ent.name += Rad50::fromRad50(ent.rad50_name[2]);
+  ent.name += Rad50::fromRad50(ent.rad50Name[2]);
   ent.name = rtrim(ent.name);
 
   ent.status = ptr.getWord(STATUS_WORD);
@@ -221,6 +242,169 @@ auto Directory::statfs(struct statvfs *vfs) -> int
 
   return 0;
 }
+
+auto Directory::truncate(const DirEnt &de, off_t newSize) -> int
+{
+  auto ds = findEnt(de);
+  if (ds.afterEnd()) {
+    return -ENOENT;
+  }
+
+  // express size in sectors
+  newSize = (newSize + Block::SECTOR_SIZE - 1) / Block::SECTOR_SIZE;
+  auto oldSize = dirblk->extractWord(ds.offset(TOTAL_LENGTH_WORD));
+
+
+  if (newSize == oldSize) {
+    return 0;
+  }
+
+  if (newSize < oldSize) {
+    return shrinkEntry(ds, newSize);
+  } else {
+
+  }
+
+  return -ENOSYS;
+}
+
+auto Directory::shrinkEntry(const DirScan &ds, int newSize) -> int
+{
+  auto base = ds.offset();
+  auto nextStatus = dirblk->extractWord(base + entrySize + STATUS_WORD);
+
+  if ((nextStatus & Dir::E_MPTY) != 0) {
+    // the block after ours is free, so we can just put our unused space 
+    // in it
+    auto delta = dirblk->extractWord(base + TOTAL_LENGTH_WORD) - newSize;
+    assert(delta > 0);
+
+    auto nextSize = dirblk->extractWord(base + entrySize + TOTAL_LENGTH_WORD);
+    nextSize += delta;
+    dirblk ->setWord(base + entrySize + TOTAL_LENGTH_WORD, nextSize);
+  } else {
+    // we'll have to insert a free segment after
+    auto last = base + entrySize;
+    while (true) {
+      auto status = dirblk->extractWord(last + STATUS_WORD);
+      if ((status & Dir::E_EOS) != 0) {
+        break;
+      }
+      last += entrySize;
+    }
+  }
+
+  dirblk->setWord(base + TOTAL_LENGTH_WORD, newSize);
+
+  return 0;
+}
+
+auto Directory::insertEmptyAt(const DirScan &ds) -> bool
+{
+  if (isSegmentFull(ds.segment))
+  {
+    auto nextSegment = dirblk->extractWord(ds.segbase + NEXT_SEGMENT);
+    if (nextSegment)
+    {
+      // we need to move the last non-EOS entry to the 
+      // start of the next segment
+      auto nextScan = firstOfSegment(nextSegment);
+      if (!insertEmptyAt(nextScan)) 
+      {
+        return false;
+      }
+
+
+
+    }
+    else
+    {
+
+    }
+  }
+
+  auto endOffset = offsetOfEntry(ds.segment, 1 + lastSegmentEntry(ds.segment));
+  auto src = ds.offset(0);
+  auto dst = src + entrySize;
+  auto cnt = endOffset - src;
+  dirblk->copyWithinBlock(src, dst, cnt);
+
+  dirblk->setWord(ds.offset(STATUS_WORD), Dir::E_MPTY);
+  dirblk->setWord(ds.offset(FILENAME_WORDS), 0);
+  dirblk->setWord(ds.offset(FILENAME_WORDS + 2), 0);
+  dirblk->setWord(ds.offset(FILENAME_WORDS + 4), 0);
+  dirblk->setWord(ds.offset(TOTAL_LENGTH_WORD), 0);
+  dirblk->setByte(ds.offset(JOB_BYTE), 0);
+  dirblk->setByte(ds.offset(CHANNEL_BYTE), 0);
+  dirblk->setWord(ds.offset(CREATION_DATE_WORD), 0);
+
+  return true;
+}
+
+auto Directory::findEnt(const DirEnt &ent) -> DirScan
+{
+  auto ds = startScan();
+
+  while (moveNext(ds)) {
+    auto status = dirblk->extractWord(ds.offset(STATUS_WORD));
+    if ((status & Dir::E_EOS) != 0) {
+      continue;
+    }
+
+    if (
+      ent.rad50Name[0] == dirblk->extractWord(ds.offset(FILENAME_WORDS)) &&
+      ent.rad50Name[1] == dirblk->extractWord(ds.offset(FILENAME_WORDS + 2)) &&
+      ent.rad50Name[2] == dirblk->extractWord(ds.offset(FILENAME_WORDS + 4))
+    ) {
+      break;
+    }
+  }
+
+  return ds;
+}
+
+auto Directory::maxEntriesPerSegment() -> int
+{
+  return (Block::SECTOR_SIZE * SECTORS_PER_SEGMENT - FIRST_ENTRY_OFFSET) / entrySize;
+}
+
+auto Directory::isSegmentFull(int segmentIndex) -> bool
+{
+  return lastSegmentEntry(segmentIndex) >= maxEntriesPerSegment() - 1;
+}
+
+// Returns the zero-based index of the EOS entry in the given one-based segment
+auto Directory::lastSegmentEntry(int segmentIndex) -> int
+{
+  auto segbase = (segmentIndex - 1) * SECTORS_PER_SEGMENT * Block::SECTOR_SIZE;
+  auto maxEntries = maxEntriesPerSegment();
+
+  for (auto i = 0; i < maxEntries; i++) {
+    auto status = dirblk->extractWord(segbase + FIRST_ENTRY_OFFSET + i * entrySize + STATUS_WORD);
+    if ((status & Dir::E_EOS) != 0) {
+      return i;
+    }
+  }
+
+  throw FilesystemException {-EINVAL, "unterminated directory segment -- directory corrupt"};
+}
+
+auto Directory::offsetOfEntry(int segment, int index) -> int
+{
+  return ((segment - 1) * SECTORS_PER_SEGMENT) + FIRST_ENTRY_OFFSET + index * entrySize;
+}
+
+// Return a pointer to the first entry of the given segment
+auto Directory::firstOfSegment(int segment) -> DirScan
+{
+  auto ds = startScan();
+  ds.segment = segment;
+  ds.index = 0;
+  ds.segbase = ((segment - 1) * SECTORS_PER_SEGMENT) * Block::SECTOR_SIZE;
+  ds.datasec = dirblk->extractWord(ds.segbase + SEGMENT_DATA_BLOCK);
+
+  return ds;
+} 
 
 /**
  * Parse a filename into RT11 RAD50 representation

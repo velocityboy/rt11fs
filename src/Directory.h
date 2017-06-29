@@ -9,6 +9,7 @@
 #include <ctime>
 #include <fuse.h>
 #include <string>
+#include <vector>
 
 namespace RT11FS {
 
@@ -35,12 +36,22 @@ public:
   auto startScan() -> DirPtr;
   auto moveNextFiltered(DirPtr &ptr, uint16_t mask) -> bool;
   auto statfs(struct statvfs *vfs) -> int;
+  auto truncate(const DirEnt &ent, off_t size) -> int;
 
 private:
+  int entrySize;
   BlockCache *cache;
   Block *dirblk;
 
-  static auto parseFilename(const std::string &name, Dir::Rad50Name &rad50) -> bool;
+  auto findEnt(const DirEnt &ent) -> DirScan;
+  auto shrinkEntry(const DirScan &ds, int newSize) -> int;
+  auto insertEmptyAt(const DirScan &ds) -> bool;
+  auto maxEntriesPerSegment() -> int;
+  auto isSegmentFull(int segmentIndex) -> bool;
+  auto lastSegmentEntry(int segmentIndex) -> int;
+  auto offsetOfEntry(int segment, int index) -> int;
+  auto firstOfSegment(int segment) -> DirScan;
+  static auto parseFilename(const std::string &name, Rad50Name &rad50) -> bool;
 };
 }
 
