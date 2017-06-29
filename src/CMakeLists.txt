@@ -4,6 +4,7 @@ add_executable (rt11fs
   Block.cpp
   BlockCache.cpp
   Directory.cpp
+  DirPtr.cpp
   File.cpp
   FileSystem.cpp
   LogUnimpl.cpp

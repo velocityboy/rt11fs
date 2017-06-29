@@ -5,47 +5,12 @@
 
 #include <cerrno>
 
+
 using std::string;
 
-namespace {
-// segment header on disk 
-const uint16_t TOTAL_SEGMENTS = 0;        // total segments allocated for directory
-const uint16_t NEXT_SEGMENT = 2;          // 1-based index of next segment
-const uint16_t HIGHEST_SEGMENT = 4;       // highest segment in use (only maintained in segment 1)
-const uint16_t EXTRA_BYTES = 6;           // extra bytes at the end of each dir entry
-const uint16_t SEGMENT_DATA_BLOCK = 8;    // first disk block of first file in segment
-const uint16_t FIRST_ENTRY_OFFSET = 10;   // offset of first entry in segment
-
-// directory entry on disk 
-const uint16_t STATUS_WORD = 0;           // offset of status word in entry
-const uint16_t FILENAME_WORDS = 2;        // offset of filename (3x rad50 words)
-const uint16_t TOTAL_LENGTH_WORD = 8;     // offset of file length (in blocks)
-const uint16_t JOB_BYTE = 10;             // if open (E_TENT), job 
-const uint16_t CHANNEL_BYTE = 11;         // if open (E_TENT), channel
-const uint16_t CREATION_DATE_WORD = 12;   // creation date (packed word)
-const uint16_t ENTRY_LENGTH = 14;         // length of entry with no extra bytes
-
-const uint16_t FIRST_SEGMENT_SECTOR = 6;  // sector address of first sector of seg #1
-const uint16_t SECTORS_PER_SEGMENT = 2;
-}
 
 namespace RT11FS {
-
-DirScan::DirScan()
-  : segment(-1)
-  , segbase(0)
-  , offset(0)
-  , datasec(0)
-{
-}
-
-auto operator ==(const Rad50Name &left, const Rad50Name &right) 
-{
-  return 
-    left.at(0) == right.at(0) && 
-    left.at(1) == right.at(1) &&
-    left.at(2) == right.at(2);
-}
+using namespace Dir;
 
 Directory::Directory(BlockCache *cache)
   : cache(cache)
@@ -78,18 +43,18 @@ auto Directory::getEnt(const std::string &name, DirEnt &ent) -> int
     return -EINVAL;
   }
 
-  auto ds = DirScan {};
+  auto ds = startScan();
 
   while (moveNext(ds)) {
-    auto status = dirblk->extractWord(ds.segbase + ds.offset + STATUS_WORD);
-    if ((status & Dir::E_EOS) != 0) {
+    auto status = dirblk->extractWord(ds.offset(STATUS_WORD));
+    if ((status & E_EOS) != 0) {
       continue;
     }
 
     if (
-      rad50Name[0] == dirblk->extractWord(ds.segbase + ds.offset + FILENAME_WORDS) &&
-      rad50Name[1] == dirblk->extractWord(ds.segbase + ds.offset + FILENAME_WORDS + 2) &&
-      rad50Name[2] == dirblk->extractWord(ds.segbase + ds.offset + FILENAME_WORDS + 4)
+      rad50Name[0] == dirblk->extractWord(ds.offset(FILENAME_WORDS)) &&
+      rad50Name[1] == dirblk->extractWord(ds.offset(FILENAME_WORDS + 2)) &&
+      rad50Name[2] == dirblk->extractWord(ds.offset(FILENAME_WORDS + 4))
     ) {
       break;
     }
@@ -110,16 +75,14 @@ static auto rtrim(const string &str)
   return str.substr(0, i + 1);
 }
 
-auto Directory::getEnt(const DirScan &scan, DirEnt &ent) -> bool
+auto Directory::getEnt(const DirPtr &ptr, DirEnt &ent) -> bool
 {
-  auto entoffs = scan.segbase + scan.offset;
-
-  if (scan.afterEnd()) {
+  if (ptr.afterEnd()) {
     return false;
   }
 
   for (auto i = 0; i < ent.rad50_name.size(); i++) {
-    ent.rad50_name[i] = dirblk->extractWord(entoffs + FILENAME_WORDS + i * sizeof(uint16_t));
+    ent.rad50_name[i] = dirblk->extractWord(ptr.offset(FILENAME_WORDS + i * sizeof(uint16_t)));
   }
 
   ent.name = Rad50::fromRad50(ent.rad50_name[0]);
@@ -131,14 +94,14 @@ auto Directory::getEnt(const DirScan &scan, DirEnt &ent) -> bool
   ent.name += Rad50::fromRad50(ent.rad50_name[2]);
   ent.name = rtrim(ent.name);
 
-  ent.status = dirblk->extractWord(entoffs + STATUS_WORD);
-  ent.length = dirblk->extractWord(entoffs + TOTAL_LENGTH_WORD) * Block::SECTOR_SIZE;
-  ent.sector0 = scan.datasec;
+  ent.status = dirblk->extractWord(ptr.offset(STATUS_WORD));
+  ent.length = dirblk->extractWord(ptr.offset(TOTAL_LENGTH_WORD)) * Block::SECTOR_SIZE;
+  ent.sector0 = ptr.getDataSector();
 
   struct tm tm;
   memset(&tm, 0, sizeof(tm));
 
-  auto dateWord = dirblk->extractWord(entoffs + CREATION_DATE_WORD); 
+  auto dateWord = dirblk->extractWord(ptr.offset(CREATION_DATE_WORD)); 
 
   auto age = (dateWord >> 14) & 03;  
   tm.tm_mon = ((dateWord >> 10) & 017) - 1;
@@ -150,55 +113,21 @@ auto Directory::getEnt(const DirScan &scan, DirEnt &ent) -> bool
   return true;
 }
 
-auto Directory::startScan() -> DirScan
+auto Directory::startScan() -> DirPtr
 {
-  return DirScan {};
+  return DirPtr {dirblk};
 }
 
-auto Directory::moveNext(DirScan &scan) -> bool
+auto Directory::moveNext(DirPtr &ptr) -> bool
 {
-  if (scan.afterEnd()) {
-    return false;
-  }
-
-  if (scan.beforeStart()) {
-    scan.segment = 1;
-    scan.segbase = (scan.segment - 1) * SECTORS_PER_SEGMENT * Block::SECTOR_SIZE;
-    scan.offset = FIRST_ENTRY_OFFSET;
-    scan.datasec = dirblk->extractWord(scan.segbase + SEGMENT_DATA_BLOCK);
-
-    return true;
-  }
-
-  auto extra = dirblk->extractWord(EXTRA_BYTES);
-  auto status = dirblk->extractWord(scan.segbase + scan.offset + STATUS_WORD);
-
-  // if it's not an end of segment marker
-  if ((status & Dir::E_EOS) == 0) {
-    scan.datasec += dirblk->extractWord(
-      scan.segbase + scan.offset + TOTAL_LENGTH_WORD);
-    scan.offset += ENTRY_LENGTH + extra;
-    return true;
-  }
-
-  // we're done if there's no next segment
-  scan.segment = dirblk->extractWord(scan.segbase + NEXT_SEGMENT);
-  if (scan.afterEnd()) {
-    return false;
-  }
-
-  // set up at start of next segment 
-  scan.segbase = (scan.segment - 1) * SECTORS_PER_SEGMENT * Block::SECTOR_SIZE;
-  scan.offset = FIRST_ENTRY_OFFSET;
-  scan.datasec = dirblk->extractWord(scan.segbase + SEGMENT_DATA_BLOCK);
-
-  return true;
+  ptr++;
+  return !ptr.afterEnd();
 }
 
-auto Directory::moveNextFiltered(DirScan &scan, uint16_t mask) -> bool
+auto Directory::moveNextFiltered(DirPtr &ptr, uint16_t mask) -> bool
 {
-  while (moveNext(scan)) {
-    auto status = dirblk->extractWord(scan.segbase + scan.offset + STATUS_WORD);
+  while (moveNext(ptr)) {
+    auto status = dirblk->extractWord(ptr.offset(STATUS_WORD));
     if ((status & mask) != 0) {
       return true;
     }
