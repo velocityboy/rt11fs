@@ -44,16 +44,14 @@ private:
   BlockCache *cache;
   Block *dirblk;
 
-#if TRUNCATE_CODE
-  auto findEnt(const DirEnt &ent) -> DirScan;
-  auto shrinkEntry(const DirScan &ds, int newSize) -> int;
-  auto insertEmptyAt(const DirScan &ds) -> bool;
-  auto maxEntriesPerSegment() -> int;
-  auto isSegmentFull(int segmentIndex) -> bool;
-  auto lastSegmentEntry(int segmentIndex) -> int;
-  auto offsetOfEntry(int segment, int index) -> int;
-  auto firstOfSegment(int segment) -> DirScan;
-#endif
+  auto shrinkEntry(DirPtr &dirp, int newSize) -> int;
+  auto insertEmptyAt(DirPtr &dirp) -> int;
+  auto spillLastEntry(const DirPtr &dirp) -> int;
+  auto allocateNewSegment() -> int;
+
+  auto maxEntriesPerSegment() const -> int;
+  auto advanceToEndOfSegment(const DirPtr &dirp) -> DirPtr;
+
   static auto parseFilename(const std::string &name, Dir::Rad50Name &rad50) -> bool;
 };
 }

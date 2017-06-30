@@ -14,11 +14,21 @@ public:
   auto beforeStart() const { return segment == -1; }
   auto afterEnd() const { return segment == 0; }
   auto offset(int delta = 0) const -> int;
+  auto getSegment() const { return segment; }
+  auto getIndex() const { return index; }
   auto getDataSector() const { return datasec; }
   auto getWord(int offs) const -> uint16_t;
+  auto setByte(int offs, uint8_t v) -> void;
+  auto setWord(int offs, uint16_t v) -> void;
+  auto setSegmentWord(int offset, uint16_t v) -> void;
 
   auto operator++() -> DirPtr &;
   auto operator++(int) -> DirPtr;
+  auto next() const -> DirPtr;
+
+  auto operator--() -> DirPtr &;
+  auto operator--(int) -> DirPtr;
+  auto prev() const -> DirPtr;
 
   /**
    * Check if the pointer points to a valid entry
@@ -34,6 +44,8 @@ private:
   int datasec;        /*!< The first data block of the referenced file */
 
   auto increment() -> void;
+  auto decrement() -> void;
+  auto setSegment(int seg) -> void;
 };
 }
 

@@ -265,173 +265,267 @@ auto Directory::statfs(struct statvfs *vfs) -> int
 
 auto Directory::truncate(const DirEnt &de, off_t newSize) -> int
 {
-  return -ENOSYS;
-}
-
-#if TRUNCATE_CODE
-auto Directory::truncate(const DirEnt &de, off_t newSize) -> int
-{
-  auto ds = findEnt(de);
-  if (ds.afterEnd()) {
+  auto dirp = getDirPointer(de.rad50_name);
+  if (dirp.afterEnd()) {
     return -ENOENT;
   }
 
-  // express size in sectors
+  // Express size in sectors
   newSize = (newSize + Block::SECTOR_SIZE - 1) / Block::SECTOR_SIZE;
-  auto oldSize = dirblk->extractWord(ds.offset(TOTAL_LENGTH_WORD));
-
+  auto oldSize = dirp.getWord(TOTAL_LENGTH_WORD);
 
   if (newSize == oldSize) {
     return 0;
   }
 
   if (newSize < oldSize) {
-    return shrinkEntry(ds, newSize);
+    // shrink the entry
   } else {
-
+    // grow the entry
   }
-
-  return -ENOSYS;
-}
-
-auto Directory::shrinkEntry(const DirScan &ds, int newSize) -> int
-{
-  auto base = ds.offset();
-  auto nextStatus = dirblk->extractWord(base + entrySize + STATUS_WORD);
-
-  if ((nextStatus & Dir::E_MPTY) != 0) {
-    // the block after ours is free, so we can just put our unused space 
-    // in it
-    auto delta = dirblk->extractWord(base + TOTAL_LENGTH_WORD) - newSize;
-    assert(delta > 0);
-
-    auto nextSize = dirblk->extractWord(base + entrySize + TOTAL_LENGTH_WORD);
-    nextSize += delta;
-    dirblk ->setWord(base + entrySize + TOTAL_LENGTH_WORD, nextSize);
-  } else {
-    // we'll have to insert a free segment after
-    auto last = base + entrySize;
-    while (true) {
-      auto status = dirblk->extractWord(last + STATUS_WORD);
-      if ((status & Dir::E_EOS) != 0) {
-        break;
-      }
-      last += entrySize;
-    }
-  }
-
-  dirblk->setWord(base + TOTAL_LENGTH_WORD, newSize);
 
   return 0;
 }
 
-auto Directory::insertEmptyAt(const DirScan &ds) -> bool
+/**
+ * Shrink the given entry.
+ * 
+ * It is expected that this call will never be used on a free space
+ * block.
+ *
+ * If there is a free space block directly following `dirp', then
+ * we can just add space into it. If not, then we have to insert
+ * a directory slot for the free'd space.
+ *
+ * @param dirp points to the entry to shrink.
+ * @param newSize the new size of the entry, in sectors.
+ * @return 0 on success or a negated errno (most commonly if
+ * the entire directory is full.)
+ * 
+ */
+auto Directory::shrinkEntry(DirPtr &dirp, int newSize) -> int
 {
-  if (isSegmentFull(ds.segment))
-  {
-    auto nextSegment = dirblk->extractWord(ds.segbase + NEXT_SEGMENT);
-    if (nextSegment)
-    {
-      // we need to move the last non-EOS entry to the 
-      // start of the next segment
-      auto nextScan = firstOfSegment(nextSegment);
-      if (!insertEmptyAt(nextScan)) 
-      {
-        return false;
-      }
+  auto nextp = dirp.next();
 
-
-
-    }
-    else
-    {
-
+  if ((nextp.getWord(STATUS_WORD) & E_MPTY) == 0) {
+    // if this succeeds, then nextp will point to a zero-sector
+    // empty entry in the same location.
+    auto err = insertEmptyAt(nextp);
+    if (err) {
+      // if we can't insert an empty entry, can't continue.
+      return err;
     }
   }
 
-  auto endOffset = offsetOfEntry(ds.segment, 1 + lastSegmentEntry(ds.segment));
-  auto src = ds.offset(0);
+  auto delta = dirp.getWord(TOTAL_LENGTH_WORD) - newSize;
+  assert(delta > 0);
+  dirp.setWord(TOTAL_LENGTH_WORD, newSize);
+  nextp.setWord(TOTAL_LENGTH_WORD, nextp.getWord(TOTAL_LENGTH_WORD) + delta);
+  return 0;
+}
+
+/**
+ * Insert a zero-sector free space directory entry at `dirp'.
+ *
+ * The entry will be created by moving everything else down.
+ * If the segment containing `dirp' is full, then the last 
+ * entry will spill into the next segment. This may happen
+ * recursively.
+ * 
+ * @param dirp a pointer to the entry that will be free space 
+ * upon success.
+ * @return 0 on success or a negative errno
+ */
+auto Directory::insertEmptyAt(DirPtr &dirp) -> int
+{
+  auto eos = advanceToEndOfSegment(dirp);
+
+  if (eos.getSegment() >= maxEntriesPerSegment() - 1) {
+    auto err = spillLastEntry(dirp);
+    if (err) {
+      return err;
+    }
+
+    // NOTE that the previous operation will have changed the position
+    // of the end of the segment
+    eos = advanceToEndOfSegment(dirp);
+    assert(eos.getSegment() < maxEntriesPerSegment() - 1);
+  }
+
+  // at this point we know it's safe to move everything down by
+  // one entry
+  auto src = dirp.offset(0);
   auto dst = src + entrySize;
-  auto cnt = endOffset - src;
+  auto cnt = eos.offset(0) - src + entrySize;
   dirblk->copyWithinBlock(src, dst, cnt);
 
-  dirblk->setWord(ds.offset(STATUS_WORD), Dir::E_MPTY);
-  dirblk->setWord(ds.offset(FILENAME_WORDS), 0);
-  dirblk->setWord(ds.offset(FILENAME_WORDS + 2), 0);
-  dirblk->setWord(ds.offset(FILENAME_WORDS + 4), 0);
-  dirblk->setWord(ds.offset(TOTAL_LENGTH_WORD), 0);
-  dirblk->setByte(ds.offset(JOB_BYTE), 0);
-  dirblk->setByte(ds.offset(CHANNEL_BYTE), 0);
-  dirblk->setWord(ds.offset(CREATION_DATE_WORD), 0);
+  // the contents of dirp have been moved, so we can 
+  // now fill dirp with the empty free entry
+  dirp.setWord(STATUS_WORD, E_MPTY);
+  dirp.setWord(FILENAME_WORDS, 0);
+  dirp.setWord(FILENAME_WORDS + 2, 0);
+  dirp.setWord(FILENAME_WORDS + 4, 0);
+  dirp.setWord(TOTAL_LENGTH_WORD, 0);
+  dirp.setByte(JOB_BYTE, 0);
+  dirp.setByte(CHANNEL_BYTE, 0);
+  dirp.setWord(CREATION_DATE_WORD, 0);
 
-  return true;
+  return 0;
 }
 
-auto Directory::findEnt(const DirEnt &ent) -> DirScan
+/**
+ * Move the last enty in the pointed-to segment to the next segment.
+ *
+ * The last entry is the enter just before the end of segment marker. If
+ * there is no other entry in the segment (i.e. just the end of segment marker)
+ * then nothing is done.
+ *
+ * If the next semgent is totally full, then it will in turn be spilled to 
+ * the next next segment and so on. If the last segment is reached in this
+ * manner then a new segment will be allocated. If all segments are full
+ * then the operation will fail.
+ *
+ * @param dirp points to the segment to move the last entry out of
+ * @return 0 on success or a negated errno
+ */
+auto Directory::spillLastEntry(const DirPtr &dirp) -> int
 {
-  auto ds = startScan();
+  auto eos = advanceToEndOfSegment(dirp);
 
-  while (moveNext(ds)) {
-    auto status = dirblk->extractWord(ds.offset(STATUS_WORD));
-    if ((status & Dir::E_EOS) != 0) {
-      continue;
-    }
-
-    if (
-      ent.rad50Name[0] == dirblk->extractWord(ds.offset(FILENAME_WORDS)) &&
-      ent.rad50Name[1] == dirblk->extractWord(ds.offset(FILENAME_WORDS + 2)) &&
-      ent.rad50Name[2] == dirblk->extractWord(ds.offset(FILENAME_WORDS + 4))
-    ) {
-      break;
-    }
+  if (eos.getIndex() == 0) {
+    // can't spill entry if there aren't any
+    return 0;
   }
 
-  return ds;
+  auto next = eos.next();
+  if (next.afterEnd()) {
+    // there is no next segment yet... allocate one
+    auto err = allocateNewSegment();
+    if (err) {
+      return err;
+    }
+
+    // if the previous operation succeeded, then there must be a next
+    // segment now
+    next = eos.next();
+    assert(!next.afterEnd());
+  } 
+
+  auto last = eos.prev();
+  assert(last.getDataSector() + last.getWord(TOTAL_LENGTH_WORD) == next.getDataSector());
+
+  // this will take care of recusively spilling if next's segment is full  
+  auto err = insertEmptyAt(next);
+  if (err) {
+    return err;
+  }
+
+  assert(next.getIndex() == 0);
+
+  // move last entry to next segment
+  dirblk->copyWithinBlock(
+    last.offset(0),
+    next.offset(0),
+    entrySize);
+
+  next.setSegmentWord(SEGMENT_DATA_BLOCK, last.getDataSector());
+
+  // now we can mark last as end of segment
+  last.setWord(STATUS_WORD, E_EOS);
+
+  // RT-11 doesn't bother with clearing the filename  
+  last.setWord(FILENAME_WORDS, 0);
+  last.setWord(FILENAME_WORDS + 2, 0);
+  last.setWord(FILENAME_WORDS + 4, 0);
+
+  last.setWord(TOTAL_LENGTH_WORD, 0);
+
+  return 0;
 }
 
-auto Directory::maxEntriesPerSegment() -> int
+/**
+ * Add a new segment to the end of the directory.
+ *
+ * The new entry will contain just an end of segment marker.
+ * 
+ * @return 0 on success or a negated errno
+ */
+auto Directory::allocateNewSegment() -> int
+{
+  // TODO figure out if RT11 will ever free a segment in the middle
+  // of the list (i.e. can there ever be a gap)
+  // if so we should traverse the segment list to figure this out
+  auto next = 1 + dirblk->extractWord(HIGHEST_SEGMENT);
+  if (next > dirblk->extractWord(TOTAL_SEGMENTS)) {
+    return -ENOSPC;
+  }
+
+  // find the last entry (which also gives us the last segment)
+  auto eos = startScan();
+  while (true) {
+    auto nextp = eos.next();
+    if (nextp.afterEnd()) {
+      break;
+    }
+    eos = nextp;
+  }
+
+  // unused segments are not initialized yet
+  int header = (FIRST_SEGMENT_SECTOR + (next - 1) * SECTORS_PER_SEGMENT) * Block::SECTOR_SIZE;
+  dirblk->setWord(header + TOTAL_SEGMENTS, dirblk->extractWord(TOTAL_SEGMENTS));
+  dirblk->setWord(header + NEXT_SEGMENT, 0);
+  dirblk->setWord(header + HIGHEST_SEGMENT, 0);   // per docs, only set in segment 1
+  dirblk->setWord(header + EXTRA_BYTES, dirblk->extractWord(EXTRA_BYTES));
+  dirblk->setWord(header + SEGMENT_DATA_BLOCK, eos.getDataSector());
+
+  int entry0 = header + FIRST_ENTRY_OFFSET;
+  dirblk->setWord(entry0 + STATUS_WORD, E_EOS);
+  dirblk->setWord(entry0 + FILENAME_WORDS, 0);
+  dirblk->setWord(entry0 + FILENAME_WORDS + 2, 0);
+  dirblk->setWord(entry0 + FILENAME_WORDS + 4, 0);
+  dirblk->setWord(entry0 + TOTAL_LENGTH_WORD, 0);
+  dirblk->setByte(entry0 + JOB_BYTE, 0);
+  dirblk->setByte(entry0 + CHANNEL_BYTE, 0);
+  dirblk->setWord(entry0 + CREATION_DATE_WORD, 0);
+
+  // `next' is now a valid segment and we can link it i
+  eos.setSegmentWord(NEXT_SEGMENT, next);
+
+  return 0;
+}
+
+/**
+ * Compute the maximum number of entries that will fit in one segment.
+ *
+ * This number is variable because, although a segment is always 1k,
+ * RT-11 allows a volume to be formatted with extra space on each entry
+ * for application use. 
+ *
+ * @return the number of entries per segment on this volume
+ */
+auto Directory::maxEntriesPerSegment() const -> int
 {
   return (Block::SECTOR_SIZE * SECTORS_PER_SEGMENT - FIRST_ENTRY_OFFSET) / entrySize;
 }
 
-auto Directory::isSegmentFull(int segmentIndex) -> bool
+/**
+ * Given a directory pointer, return another pointer that points to
+ * the end of segment marker in the same segment.
+ *
+ * The original pointer is not modified.
+ *
+ * @return a pointer to the end of segment marker
+ */
+auto Directory::advanceToEndOfSegment(const DirPtr &dirp) -> DirPtr
 {
-  return lastSegmentEntry(segmentIndex) >= maxEntriesPerSegment() - 1;
-}
+  auto eos = dirp;
 
-// Returns the zero-based index of the EOS entry in the given one-based segment
-auto Directory::lastSegmentEntry(int segmentIndex) -> int
-{
-  auto segbase = (segmentIndex - 1) * SECTORS_PER_SEGMENT * Block::SECTOR_SIZE;
-  auto maxEntries = maxEntriesPerSegment();
-
-  for (auto i = 0; i < maxEntries; i++) {
-    auto status = dirblk->extractWord(segbase + FIRST_ENTRY_OFFSET + i * entrySize + STATUS_WORD);
-    if ((status & Dir::E_EOS) != 0) {
-      return i;
-    }
+  while ((eos.getWord(STATUS_WORD) & E_EOS) == 0) {
+    ++eos;
   }
 
-  throw FilesystemException {-EINVAL, "unterminated directory segment -- directory corrupt"};
+  return eos;
 }
-
-auto Directory::offsetOfEntry(int segment, int index) -> int
-{
-  return ((segment - 1) * SECTORS_PER_SEGMENT) + FIRST_ENTRY_OFFSET + index * entrySize;
-}
-
-// Return a pointer to the first entry of the given segment
-auto Directory::firstOfSegment(int segment) -> DirScan
-{
-  auto ds = startScan();
-  ds.segment = segment;
-  ds.index = 0;
-  ds.segbase = ((segment - 1) * SECTORS_PER_SEGMENT) * Block::SECTOR_SIZE;
-  ds.datasec = dirblk->extractWord(ds.segbase + SEGMENT_DATA_BLOCK);
-
-  return ds;
-} 
-#endif
 
 /**
  * Parse a filename into RT11 RAD50 representation

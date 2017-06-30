@@ -2,6 +2,8 @@
 #include "DirConst.h"
 #include "DirPtr.h"
 
+#include <cassert>
+
 namespace RT11FS {
 using namespace Dir;
 
@@ -36,12 +38,45 @@ auto DirPtr::offset(int delta) const -> int
 /**
  * Return a word from the current entry.
  *
- * @param delta the offset into the entry.
+ * @param offs the offset into the entry.
  * @return the word value at the given offset
  */
 auto DirPtr::getWord(int offs) const -> uint16_t
 {
   return dirblk->extractWord(offset(offs));
+}
+
+/**
+ * Sets a byte in the current entry.
+ *
+ * @param offs the offset into the entry.
+ * @param v the value to store at the given offset
+ */
+auto DirPtr::setByte(int offs, uint8_t v) -> void
+{
+  dirblk->setByte(offset(offs), v);
+}
+
+/**
+ * Sets a word in the current entry.
+ *
+ * @param offs the offset into the entry.
+ * @param v the value to store at the given offset
+ */
+auto DirPtr::setWord(int offs, uint16_t v) -> void
+{
+  dirblk->setWord(offset(offs), v);
+}
+
+/**
+ * Sets a word in the segment header of the referenced segment.
+ *
+ * @param offs the offset into the header.
+ * @param v the value to store at the given offset
+ */
+auto DirPtr::setSegmentWord(int offset, uint16_t v) -> void
+{
+  dirblk->setWord(segbase + offset, v);
 }
 
 /**
@@ -69,6 +104,52 @@ auto DirPtr::operator++(int) -> DirPtr
 }
 
 /**
+ * Returns the next entry in the directory.
+ * If the pointer is already past the end, does nothing.
+ * @return a pointer to the next sequential entry in the directory
+ */
+auto DirPtr::next() const -> DirPtr
+{
+  auto nextp = *this;
+  return ++nextp;
+}
+
+/**
+ * Move the pointer to the previous entry.
+ *
+ * @return the decremented entry
+ */
+auto DirPtr::operator--() -> DirPtr &
+{
+  decrement();
+  return *this;
+}
+
+/**
+ * Move the pointer to the previous entry.
+ *
+ * @return the original entry
+ */
+auto DirPtr::operator--(int) -> DirPtr
+{
+  DirPtr pre = *this;
+
+  decrement();
+  return pre;
+}
+
+/**
+ * Returns the previous entry in the directory.
+ * If the pointer is already before the start, does nothing.
+ * @return a pointer to the previous sequential entry in the directory
+ */
+auto DirPtr::prev() const -> DirPtr
+{
+  auto prevp = *this;
+  return ++prevp;
+}
+
+/**
  * Move the pointer to the next entry.
  * If the pointer is already past the end, nothing will change.
  */
@@ -79,8 +160,7 @@ auto DirPtr::increment() -> void
   }
 
   if (beforeStart()) {
-    segment = 1;
-    segbase = (segment - 1) * SECTORS_PER_SEGMENT * Block::SECTOR_SIZE;
+    setSegment(1);
     index = 0;
     datasec = dirblk->extractWord(segbase + SEGMENT_DATA_BLOCK);
 
@@ -107,6 +187,85 @@ auto DirPtr::increment() -> void
   segbase = (segment - 1) * SECTORS_PER_SEGMENT * Block::SECTOR_SIZE;
   index = 0;
   datasec = dirblk->extractWord(segbase + SEGMENT_DATA_BLOCK);
+}
+
+/**
+ * Move the pointer to the previous entry.
+ * If the pointer is already before the start, nothing will change.
+ */
+auto DirPtr::decrement() -> void
+{
+  // can't back up any more
+  if (beforeStart()) {
+    return;
+  }
+
+  if (afterEnd()) {
+    // find the last segment
+    setSegment(1);
+
+    while (true) {
+      auto next = dirblk->extractWord(segbase + NEXT_SEGMENT);
+      if (next == 0) {
+        break;
+      }
+      setSegment(next);
+    }
+
+    // find the last entry
+    index = 0;
+    datasec = dirblk->extractWord(segbase + SEGMENT_DATA_BLOCK);
+
+    while ((getWord(STATUS_WORD) & E_EOS) == 0) {
+      increment();
+    }
+
+    return;
+  }
+
+  // we have a normal entry
+  if (index) {
+    index--;
+    datasec -= getWord(TOTAL_LENGTH_WORD);
+    return;
+  }
+
+  // we're at the start of a segment, so we have to find the end of the
+  // previous segment
+  if (segment == 1) {
+    // we're at the start of the first segment, flag before start state
+    //
+    segment = -1;
+    return;
+  }
+
+  auto curr = segment;
+  setSegment(1);
+
+  while (true) {
+    auto next = dirblk->extractWord(segbase + NEXT_SEGMENT);
+    assert(next != 0);
+
+    if (next == curr) {
+      break;
+    }
+
+    setSegment(next);
+  }
+
+  // find the last entry
+  index = 0;
+  datasec = dirblk->extractWord(segbase + SEGMENT_DATA_BLOCK);
+
+  while ((getWord(STATUS_WORD) & E_EOS) == 0) {
+    increment();
+  }
+}
+
+auto DirPtr::setSegment(int seg) -> void
+{
+  segment = seg;
+  segbase = (segment - 1) * SECTORS_PER_SEGMENT * Block::SECTOR_SIZE;
 }
 
 }
