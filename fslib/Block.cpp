@@ -12,6 +12,7 @@ Block::Block(int sector, int count)
   : sector(sector)
   , count(count)
   , dirty(false)
+  , refcount(0)
 {
   data.resize(count * SECTOR_SIZE);
 }

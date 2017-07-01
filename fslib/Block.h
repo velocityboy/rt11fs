@@ -27,9 +27,10 @@ public:
   auto read(int fd) -> void;
   auto resize(int newCount, int fd) -> void;
 
-
   auto addRef() { return ++refcount; }
   auto release() { return --refcount; }
+
+  auto isDirty() const { return dirty; }
 
 private:
   int sector;
