@@ -79,6 +79,19 @@ auto DirPtr::setSegmentWord(int offset, uint16_t v) -> void
   dirblk->setWord(segbase + offset, v);
 }
 
+/** 
+ * Test the status word for set bits.
+ * 
+ * All of the bits in `mask' must be set to pass the test.
+ *
+ * @param mask contains bit bits to check in the status word.
+ * @return true if all the set bits im `mask' are also set in the status word
+ */
+auto DirPtr::hasStatus(uint16_t mask) const -> bool
+{
+  return (getWord(STATUS_WORD) & mask) == mask;
+}
+
 /**
  * Move the pointer to the next entry.
  *

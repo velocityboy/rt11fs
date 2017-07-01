@@ -34,7 +34,8 @@ const uint16_t ENTRY_LENGTH = 14;         // length of entry with no extra bytes
 const uint16_t FIRST_SEGMENT_SECTOR = 6;  // sector address of first sector of seg #1
 const uint16_t SECTORS_PER_SEGMENT = 2;
 
-using Rad50Name = std::array<uint16_t, 3>;
+const uint16_t FILENAME_LENGTH = 3;       /*!< number of rad50 words in a filename */
+using Rad50Name = std::array<uint16_t, FILENAME_LENGTH>;
 
 inline auto operator ==(const Rad50Name &left, const Rad50Name &right) 
 {

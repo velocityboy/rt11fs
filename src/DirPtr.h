@@ -21,6 +21,7 @@ public:
   auto setByte(int offs, uint8_t v) -> void;
   auto setWord(int offs, uint16_t v) -> void;
   auto setSegmentWord(int offset, uint16_t v) -> void;
+  auto hasStatus(uint16_t mask) const -> bool;
 
   auto operator++() -> DirPtr &;
   auto operator++(int) -> DirPtr;

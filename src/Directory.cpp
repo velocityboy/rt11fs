@@ -108,8 +108,7 @@ auto Directory::getDirPointer(const Dir::Rad50Name &name) -> DirPtr
   auto ds = startScan();
 
   while (++ds) {
-    auto status = ds.getWord(STATUS_WORD);
-    if ((status & E_EOS) != 0) {
+    if (ds.hasStatus(E_EOS)) {
       continue;
     }
 
@@ -246,7 +245,7 @@ auto Directory::statfs(struct statvfs *vfs) -> int
 
   while (++ptr) {
     getEnt(ptr, ent);
-    if ((ent.status & Dir::E_MPTY) != 0) {
+    if (ptr.hasStatus(E_MPTY)) {
       freeblocks += ent.length;
     } else {
       usedblocks += ent.length;
@@ -279,12 +278,10 @@ auto Directory::truncate(const DirEnt &de, off_t newSize) -> int
   }
 
   if (newSize < oldSize) {
-    // shrink the entry
-  } else {
-    // grow the entry
-  }
+    return shrinkEntry(dirp, newSize);
+  } 
 
-  return 0;
+  return growEntry(dirp, newSize);
 }
 
 /**
@@ -307,7 +304,7 @@ auto Directory::shrinkEntry(DirPtr &dirp, int newSize) -> int
 {
   auto nextp = dirp.next();
 
-  if ((nextp.getWord(STATUS_WORD) & E_MPTY) == 0) {
+  if (!nextp.hasStatus(E_MPTY)) {
     // if this succeeds, then nextp will point to a zero-sector
     // empty entry in the same location.
     auto err = insertEmptyAt(nextp);
@@ -321,6 +318,94 @@ auto Directory::shrinkEntry(DirPtr &dirp, int newSize) -> int
   assert(delta > 0);
   dirp.setWord(TOTAL_LENGTH_WORD, newSize);
   nextp.setWord(TOTAL_LENGTH_WORD, nextp.getWord(TOTAL_LENGTH_WORD) + delta);
+  return 0;
+}
+
+/**
+ * Grow the given entry.
+ * 
+ * It is expected that this call will never be used on a free space
+ * block.
+ *
+ * If there is a free space block directly following `dirp', then
+ * steal space from it if it's big enough. Otherwise, search the
+ * directory for a free block big enough to hold the new requested
+ * file size. If there is none, then there aren't enough
+ * contiguous free blocks and the volume should be compacted.
+ *
+ * @param dirp points to the entry to grow.
+ * @param newSize the new size of the entry, in sectors.
+ * @return 0 on success or a negated errno (most commonly if
+ * the entire directory is full.)
+ * 
+ */
+auto Directory::growEntry(DirPtr &dirp, int newSize) -> int
+{
+  auto next = dirp.next();
+  if (next.hasStatus(E_MPTY)) {
+    auto available = dirp.getWord(TOTAL_LENGTH_WORD) + next.getWord(TOTAL_LENGTH_WORD);
+    if (newSize <= available) {
+      // transfer size
+      auto delta = newSize - dirp.getWord(TOTAL_LENGTH_WORD);
+      dirp.setWord(TOTAL_LENGTH_WORD, newSize);
+      next.setWord(TOTAL_LENGTH_WORD, next.getWord(TOTAL_LENGTH_WORD) - delta);
+    }
+
+    if (next.getWord(TOTAL_LENGTH_WORD) == 0) {
+      // delete empty free space entry
+      deleteEmptyAt(next);
+    }
+
+    return 0;
+  }
+
+  // we couldn't grow the file in place, so move it to a free block
+  // large enough to contain it
+  auto newp = findLargestFreeBlock();
+  if (newp.afterEnd() || newp.getWord(TOTAL_LENGTH_WORD) < newSize) {
+    return -ENOSPC;
+  }
+
+  auto err = carveFreeBlock(newp, newSize);
+  if (err) {
+    return err;
+  }
+
+  // newp is now exactly the requested size
+
+  // TODO this will trash any open file that has cached a directory entry 
+  // to the file we're moving. Fix them up.
+  //
+  auto src = dirp.getDataSector();
+  auto dst = newp.getDataSector();
+  auto cnt = dirp.getWord(TOTAL_LENGTH_WORD);
+
+  // Note that even if the cache is doing writethrough, this is safe to do
+  // before the directory gets updated because we're just writing data into
+  // the data area of a free block
+  while (cnt--) {
+    auto srcBlk = cache->getBlock(src++, 1);
+    auto dstBlk = cache->getBlock(dst++, 1);
+    dstBlk->copyFromOtherBlock(srcBlk, 0, 0, Block::SECTOR_SIZE);
+    cache->putBlock(srcBlk);
+    cache->putBlock(dstBlk);
+  }
+
+  src = dirp.offset(0);
+  dst = newp.offset(0);
+  dirblk->copyWithinBlock(src, dst, entrySize);
+
+  // we just wrote over the new entry with the old size; put it back    
+  newp.setWord(TOTAL_LENGTH_WORD, newSize);
+
+  dirp.setWord(STATUS_WORD, E_MPTY);
+  dirp.setWord(FILENAME_WORDS, 0);
+  dirp.setWord(FILENAME_WORDS + 2, 0);
+  dirp.setWord(FILENAME_WORDS + 4, 0);
+  dirp.setByte(JOB_BYTE, 0);
+  dirp.setByte(CHANNEL_BYTE, 0);
+  dirp.setWord(CREATION_DATE_WORD, 0); 
+
   return 0;
 }
 
@@ -374,6 +459,30 @@ auto Directory::insertEmptyAt(DirPtr &dirp) -> int
 }
 
 /**
+ * Delete a zero-sector free space directory entry at `dirp'.
+ *
+ * The entry must be zero size, because otherwise the sector
+ * addresses of the following files would be incorrect.
+ * Deleting a non-empty file requires turning the file's 
+ * entry into free space, which is a different task.
+ * 
+ * @param dirp a pointer to the entry that will be free space 
+ * upon success.
+ * @return 0 on success or a negative errno
+ */
+auto Directory::deleteEmptyAt(DirPtr &dirp) -> void
+{
+  assert(dirp.getWord(TOTAL_LENGTH_WORD) == 0);
+
+  auto eos = advanceToEndOfSegment(dirp);
+
+  auto dst = dirp.offset(0);
+  auto src = dst + entrySize;
+  auto cnt = eos.offset(0) - src + entrySize;
+  dirblk->copyWithinBlock(src, dst, cnt);
+}
+
+/**
  * Move the last enty in the pointed-to segment to the next segment.
  *
  * The last entry is the enter just before the end of segment marker. If
@@ -420,6 +529,8 @@ auto Directory::spillLastEntry(const DirPtr &dirp) -> int
     return err;
   }
 
+  // since `next' is one past an eos marker, it must be the first entry
+  // in a segment.
   assert(next.getIndex() == 0);
 
   // move last entry to next segment
@@ -495,6 +606,72 @@ auto Directory::allocateNewSegment() -> int
 }
 
 /**
+ * Find the largest free block in the directory.
+ *
+ * @return a directory pointer to the free block, which will be afterEnd 
+ * if there is no free block.
+ */
+auto Directory::findLargestFreeBlock() -> DirPtr
+{
+  auto largestBlock = -1;
+  auto largestBlockPtr = DirPtr {dirblk};
+
+  auto dirp = startScan();
+
+  while (++dirp) {
+    auto length = dirp.getWord(TOTAL_LENGTH_WORD);
+    if (length > largestBlock) {
+      largestBlock = length;
+      largestBlockPtr = dirp;
+    }
+  }
+
+  if (largestBlock <= 0) {
+    // dirp is at the end now
+    largestBlockPtr = dirp;
+  }
+
+  return largestBlockPtr;
+}
+
+/**
+ * Carve a smaller block out of a free block
+ *
+ * The block must be large enough to contain `size' sectors.
+ * A new directory entry must probably be created; this method
+ * can fail if a there's no room for another entry after 
+ * the existing free block.
+ *
+ * On return, `dirp' is still valid and points to a free 
+ * block of exactly `size' sectors.
+ *
+ * @param dirp the free block to split
+ * @param size the new size in sectors of `dirp'
+ * @return 0 on success or a negated errno
+ */
+auto Directory::carveFreeBlock(DirPtr &dirp, int size) -> int
+{
+  if (size > dirp.getWord(TOTAL_LENGTH_WORD)) {
+    return -EINVAL;
+  }
+
+  // if the new block is larger than we need, carve it up
+  if (dirp.getWord(TOTAL_LENGTH_WORD) < size) {
+    auto next = dirp.next();
+    auto err = insertEmptyAt(next);
+    if (err) {
+      return err;
+    }
+
+    auto delta = dirp.getWord(TOTAL_LENGTH_WORD) - size;
+    dirp.setWord(TOTAL_LENGTH_WORD, dirp.getWord(TOTAL_LENGTH_WORD));
+    next.setWord(TOTAL_LENGTH_WORD, delta);
+  }
+
+  return 0;
+}
+
+/**
  * Compute the maximum number of entries that will fit in one segment.
  *
  * This number is variable because, although a segment is always 1k,
@@ -520,7 +697,7 @@ auto Directory::advanceToEndOfSegment(const DirPtr &dirp) -> DirPtr
 {
   auto eos = dirp;
 
-  while ((eos.getWord(STATUS_WORD) & E_EOS) == 0) {
+  while (!eos.hasStatus(E_EOS)) {
     ++eos;
   }
 

@@ -16,6 +16,7 @@ public:
 
   auto copyOut(int offset, int bytes, char *dest) -> void;
   auto copyWithinBlock(int sourceOffset, int destOffset, int count) -> void;
+  auto copyFromOtherBlock(Block *source, int sourceOffset, int destOffset, int count) -> void;
 
   auto setByte(int offset, uint8_t value) -> void;
   auto setWord(int offset, uint16_t value) -> void;

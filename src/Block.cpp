@@ -91,6 +91,41 @@ auto Block::copyWithinBlock(int sourceOffset, int destOffset, int count) -> void
   dirty = true;  
 }
 
+/**
+ * Copy data from one block to another
+ * 
+ * Violating the bounds of either block will cause -EIO to be thrown
+ *
+ * @param source the block to copy data from.
+ * @param sourceOffset the byte offset to copy from in `source'.
+ * @param destOffset the byte offset to copy to in this block.
+ * @param count the number of bytes to copy.
+ */
+auto Block::copyFromOtherBlock(Block *source, int sourceOffset, int destOffset, int count) -> void
+{
+  if (
+    // all parameters must be positive
+    sourceOffset < 0 || 
+    destOffset < 0 || 
+    count <= 0 || 
+    // these check for integer overflow
+    sourceOffset + count <= 0 ||
+    destOffset + count <= 0 ||
+    // can't run off end of block
+    sourceOffset + count > source->data.size() ||
+    destOffset + count > data.size()) {
+    throw FilesystemException {-EIO, "invalid copy ranges for moving data between blocks"};    
+  }
+
+  // It's safe to use memcpy here because two blocks can never overlap
+  ::memcpy(
+    &data[destOffset],
+    &source->data[sourceOffset],
+    count);
+
+  dirty = true;
+}
+
 // Resize the block to a new number of sectors. If the block is
 // growing, then fill the new space from the file system image.
 auto Block::resize(int newCount, int fd) -> void

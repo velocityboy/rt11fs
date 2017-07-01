@@ -45,9 +45,14 @@ private:
   Block *dirblk;
 
   auto shrinkEntry(DirPtr &dirp, int newSize) -> int;
+  auto growEntry(DirPtr &dirp, int newSize) -> int;
+
   auto insertEmptyAt(DirPtr &dirp) -> int;
+  auto deleteEmptyAt(DirPtr &dirp) -> void;
   auto spillLastEntry(const DirPtr &dirp) -> int;
   auto allocateNewSegment() -> int;
+  auto findLargestFreeBlock() -> DirPtr;
+  auto carveFreeBlock(DirPtr &dirp, int size) -> int;
 
   auto maxEntriesPerSegment() const -> int;
   auto advanceToEndOfSegment(const DirPtr &dirp) -> DirPtr;
