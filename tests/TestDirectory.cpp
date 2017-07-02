@@ -5,6 +5,7 @@
 #include "DirectoryBuilder.h"
 #include "MemoryDataSource.h"
 #include "FilesystemException.h"
+#include "Rad50.h"
 #include "gtest/gtest.h"
 
 #include <array>
@@ -91,6 +92,126 @@ TEST_F(DirectoryTest, BasicEnumeration)
   ++dirp;
   EXPECT_FALSE(dirp.beforeStart());
   EXPECT_TRUE(dirp.afterEnd());
+}
+
+TEST_F(DirectoryTest, GetByName)
+{
+  auto segments = 8;
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_PERM, 2, { 1, 2, 3 }},
+      Ent {E_PERM, 2, { 075131, 062000, 075273 }},      // SWAP.SYS
+      Ent {E_EOS, DirectoryBuilder::REST_OF_DATA}
+    },
+  };
+
+  builder.formatWithEntries(segments, dirdata);
+
+  auto dir = Directory {blockCache.get()};
+
+  auto ent = DirEnt {};
+  auto err = dir.getEnt("SWAP.SYS", ent);
+  EXPECT_EQ(err, 0);
+  EXPECT_EQ(ent.status, E_PERM);
+  EXPECT_EQ(ent.length, 2 * Block::SECTOR_SIZE);
+  EXPECT_EQ(ent.sector0, 6 + 8 * 2 + 2);
+
+  err = dir.getEnt("NONONO.NOM", ent);
+  EXPECT_EQ(err, -ENOENT);
+}
+
+TEST_F(DirectoryTest, GetByNameInSecondSegment)
+{
+  auto segments = 8;
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_EOS},
+    },
+    {
+      Ent {E_PERM, 2, { 1, 2, 3 }},
+      Ent {E_PERM, 2, { 075131, 062000, 075273 }},      // SWAP.SYS
+      Ent {E_EOS, DirectoryBuilder::REST_OF_DATA}
+    },
+  };
+
+  builder.formatWithEntries(segments, dirdata);
+
+  auto dir = Directory {blockCache.get()};
+
+  auto ent = DirEnt {};
+  auto err = dir.getEnt("SWAP.SYS", ent);
+  EXPECT_EQ(err, 0);
+  EXPECT_EQ(ent.status, E_PERM);
+  EXPECT_EQ(ent.length, 2 * Block::SECTOR_SIZE);
+  EXPECT_EQ(ent.sector0, 6 + 8 * 2 + 2);
+}
+
+TEST_F(DirectoryTest, GetByRad50)
+{
+  auto segments = 8;
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_PERM, 2, { 1, 2, 3 }},
+      Ent {E_PERM, 2, { 075131, 062000, 075273 }},      // SWAP.SYS
+      Ent {E_EOS, DirectoryBuilder::REST_OF_DATA}
+    },
+  };
+
+  builder.formatWithEntries(segments, dirdata);
+
+  auto dir = Directory {blockCache.get()};
+
+  auto search = Rad50Name { 075131, 062000, 075273 };
+
+  auto dirp = dir.getDirPointer(search);
+
+  EXPECT_FALSE(dirp.beforeStart());
+  EXPECT_FALSE(dirp.afterEnd());
+  EXPECT_EQ(dirp.getSegment(), 1);
+  EXPECT_EQ(dirp.getIndex(), 1);
+
+  search = Rad50Name { 075131, 062000, 075274 };
+
+  dirp = dir.getDirPointer(search);
+
+  EXPECT_FALSE(dirp.beforeStart());
+  EXPECT_TRUE(dirp.afterEnd());
+}
+
+TEST_F(DirectoryTest, GetByRad50InSecondSegment)
+{
+  auto segments = 8;
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_EOS},
+    },
+    {
+      Ent {E_PERM, 2, { 1, 2, 3 }},
+      Ent {E_PERM, 2, { 075131, 062000, 075273 }},      // SWAP.SYS
+      Ent {E_EOS, DirectoryBuilder::REST_OF_DATA}
+    },
+  };
+
+  builder.formatWithEntries(segments, dirdata);
+
+  auto dir = Directory {blockCache.get()};
+
+  auto search = Rad50Name { 075131, 062000, 075273 };
+
+  auto dirp = dir.getDirPointer(search);
+
+  EXPECT_FALSE(dirp.beforeStart());
+  EXPECT_FALSE(dirp.afterEnd());
+  EXPECT_EQ(dirp.getSegment(), 2);
+  EXPECT_EQ(dirp.getIndex(), 1);
 }
 
 }
