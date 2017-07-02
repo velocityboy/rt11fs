@@ -183,7 +183,6 @@ TEST_F(DirectoryTest, GetByRad50)
   EXPECT_EQ(ent.length, 3 * Block::SECTOR_SIZE);
   EXPECT_EQ(ent.sector0, 6 + 8 * 2 + 2);
 
-
   search = Rad50Name { 075131, 062000, 075274 };
 
   dirp = dir.getDirPointer(search);
@@ -221,5 +220,38 @@ TEST_F(DirectoryTest, GetByRad50InSecondSegment)
   EXPECT_EQ(dirp.getSegment(), 2);
   EXPECT_EQ(dirp.getIndex(), 1);
 }
+
+TEST_F(DirectoryTest, MoveNextFiltered)
+{
+  auto segments = 8;
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_MPTY, 2 },
+      Ent {E_PERM, 3, { 075131, 062000, 075273 }},      // SWAP.SYS
+      Ent {E_MPTY, 2 },
+      Ent {E_EOS, DirectoryBuilder::REST_OF_DATA}
+    },
+  };
+
+  builder.formatWithEntries(segments, dirdata);
+
+  auto dir = Directory {blockCache.get()};
+
+  auto dirp = dir.startScan();
+
+  EXPECT_TRUE(dirp.beforeStart());
+  EXPECT_FALSE(dirp.afterEnd());
+
+  auto found = dir.moveNextFiltered(dirp, E_PERM);
+  EXPECT_TRUE(found);
+  EXPECT_EQ(dirp.getSegment(), 1);
+  EXPECT_EQ(dirp.getIndex(), 1);
+
+  found = dir.moveNextFiltered(dirp, E_PERM);
+  EXPECT_FALSE(found);
+}
+
 
 }
