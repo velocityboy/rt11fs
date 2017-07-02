@@ -9,11 +9,13 @@
 #include <memory>
 #include <stdexcept>
 #include <unistd.h>
+#include <vector>
 
 using namespace RT11FS;
 
 using std::make_unique;
 using std::unique_ptr;
+using std::vector;
 
 namespace {
 class BlockCacheTest : public ::testing::Test
@@ -22,15 +24,15 @@ protected:
   static const int sectors = 16;
 
   BlockCacheTest()
+    : dataSource(make_unique<MemoryDataSource>(sectors * Block::SECTOR_SIZE))
+    , blockCache(make_unique<BlockCache>(dataSource.get()))
+    , data(dataSource->getData())
   { 
-    dataSource = make_unique<MemoryDataSource>(sectors * Block::SECTOR_SIZE);
-    blockCache = make_unique<BlockCache>(dataSource.get());
-    data = dataSource->getData();
   }
 
   std::unique_ptr<MemoryDataSource> dataSource;
   std::unique_ptr<BlockCache> blockCache;
-  uint8_t *data;
+  vector<uint8_t> &data;
 };
 
 const int BlockCacheTest::sectors;

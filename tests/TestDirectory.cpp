@@ -2,79 +2,53 @@
 #include "BlockCache.h"
 #include "DirConst.h"
 #include "Directory.h"
+#include "DirectoryBuilder.h"
 #include "MemoryDataSource.h"
 #include "FilesystemException.h"
 #include "gtest/gtest.h"
 
+#include <array>
 #include <cerrno>
 #include <cstring>
 #include <memory>
 #include <stdexcept>
 #include <unistd.h>
+#include <vector>
 
 using namespace RT11FS;
 using namespace RT11FS::Dir;
 
+using std::array;
+using std::copy;
 using std::out_of_range;
 using std::make_unique;
+using std::vector;
 
 namespace {
+
 class DirectoryTest : public ::testing::Test
 {
 protected:
   static const int sectors = 256;
 
   DirectoryTest()
+    : dataSource(make_unique<MemoryDataSource>(sectors * Block::SECTOR_SIZE))
+    , blockCache(make_unique<BlockCache>(dataSource.get()))
+    , data(dataSource->getData())
+    , builder(*dataSource.get())
   { 
-    dataSource = make_unique<MemoryDataSource>(sectors * Block::SECTOR_SIZE);
-    blockCache = make_unique<BlockCache>(dataSource.get());
-    data = dataSource->getData();
   }
-
-  auto putWord(int offset, uint16_t word);
-  auto formatEmpty(int dirSegments, int extraBytes = 0);
 
   std::unique_ptr<MemoryDataSource> dataSource;
   std::unique_ptr<BlockCache> blockCache;
-  uint8_t *data;
+  std::vector<uint8_t> &data;
+  DirectoryBuilder builder;
 };
-
-auto DirectoryTest::putWord(int offset, uint16_t word)
-{
-  data[offset] = word & 0xff;
-  data[offset + 1] = (word >> 8) & 0xff;
-}
-
-auto DirectoryTest::formatEmpty(int dirSegments, int extraBytes)
-{
-  auto offset = FIRST_SEGMENT_SECTOR * Block::SECTOR_SIZE;
-  auto dirSectors = dirSegments * SECTORS_PER_SEGMENT;
-  auto firstDataSector = FIRST_SEGMENT_SECTOR + dirSectors;
-  auto dataSectors = sectors - firstDataSector;
-
-  // header
-  putWord(offset + TOTAL_SEGMENTS, dirSegments);
-  putWord(offset + NEXT_SEGMENT, 0);
-  putWord(offset + HIGHEST_SEGMENT, 1);
-  putWord(offset + EXTRA_BYTES, extraBytes);
-  putWord(offset + SEGMENT_DATA_BLOCK, firstDataSector);
-
-  // first entry
-  offset += FIRST_ENTRY_OFFSET;
-  putWord(offset + STATUS_WORD, E_EOS);
-  putWord(offset + FILENAME_WORDS + 0, 0);
-  putWord(offset + FILENAME_WORDS + 2, 0);
-  putWord(offset + FILENAME_WORDS + 4, 0);
-  putWord(offset + TOTAL_LENGTH_WORD, dataSectors);
-  data[offset + JOB_BYTE] = 0;
-  data[offset + CHANNEL_BYTE] = 0;
-  putWord(offset + CREATION_DATE_WORD, 0);
-}
 
 TEST_F(DirectoryTest, BasicEnumeration)
 {
   auto segments = 8;
-  formatEmpty(segments);
+  builder.formatEmpty(segments);
 
   auto dir = Directory {blockCache.get()};
 

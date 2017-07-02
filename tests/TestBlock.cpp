@@ -21,7 +21,7 @@ TEST(Block, BlockBasics)
 {
   auto size = 3 * Block::SECTOR_SIZE;
   auto dataSource = make_unique<MemoryDataSource>(size);
-  auto data = dataSource->getData();
+  auto &data = dataSource->getData();
 
   for (auto i = 0; i < size; i++) {
     data[i] = i & 0xff;

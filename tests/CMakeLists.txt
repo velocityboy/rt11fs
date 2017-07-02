@@ -19,6 +19,7 @@ add_definitions(-D_FILE_OFFSET_BITS=64)
 add_definitions(-D_DARWIN_USE_64_BIT_INODE)
 
 add_executable (tests
+  DirectoryBuilder.cpp
   TestBlock.cpp
   TestBlockCache.cpp
   TestDirectory.cpp

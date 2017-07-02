@@ -12,7 +12,7 @@ class MemoryDataSource : public DataSource
 public:
   MemoryDataSource(size_t bytes);
 
-  auto getData() -> uint8_t * { return &memory[0]; }
+  auto getData() -> std::vector<uint8_t> & { return memory; }
 
   auto stat(struct stat *st) -> int override;
   auto read(void *buffer, size_t bytes, off_t offset) -> ssize_t override;  
