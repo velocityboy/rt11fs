@@ -48,7 +48,16 @@ protected:
 TEST_F(DirectoryTest, BasicEnumeration)
 {
   auto segments = 8;
-  builder.formatEmpty(segments);
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_PERM, 2, { 1, 2, 3 }},
+      Ent {E_EOS, DirectoryBuilder::REST_OF_DATA}
+    },
+  };
+
+  builder.formatWithEntries(segments, dirdata);
 
   auto dir = Directory {blockCache.get()};
 
@@ -61,11 +70,21 @@ TEST_F(DirectoryTest, BasicEnumeration)
   ++dirp;
   EXPECT_FALSE(dirp.beforeStart());
   EXPECT_FALSE(dirp.afterEnd());
+
   EXPECT_EQ(dirp.getDataSector(), firstDataSector);
-  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), sectors - firstDataSector);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 2);
   EXPECT_EQ(dirp.getSegment(), 1);
   EXPECT_EQ(dirp.getIndex(), 0);
   EXPECT_EQ(dirp.offset(0), FIRST_ENTRY_OFFSET);
+  EXPECT_FALSE(dirp.hasStatus(E_EOS));
+  EXPECT_TRUE(dirp.hasStatus(E_PERM));
+
+  ++dirp;
+  EXPECT_EQ(dirp.getDataSector(), firstDataSector + 2);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), sectors - firstDataSector - 2);
+  EXPECT_EQ(dirp.getSegment(), 1);
+  EXPECT_EQ(dirp.getIndex(), 1);
+  EXPECT_EQ(dirp.offset(0), FIRST_ENTRY_OFFSET + ENTRY_LENGTH);
   EXPECT_TRUE(dirp.hasStatus(E_EOS));
   EXPECT_FALSE(dirp.hasStatus(E_PERM));
 

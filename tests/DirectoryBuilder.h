@@ -15,6 +15,8 @@ class DirectoryBuilder
 public:
   DirectoryBuilder(RT11FS::MemoryDataSource &dataSource);
 
+  static const uint16_t REST_OF_DATA = 0xffff;
+
   struct DirEntry {
     uint16_t status;
     RT11FS::Dir::Rad50Name name;
@@ -41,6 +43,7 @@ public:
   };
 
   auto formatEmpty(int dirSegments, int extraBytes = 0) -> void;
+  auto formatWithEntries(int dirSegments, const std::vector<std::vector<DirEntry>> &entries, int extraBytes = 0) -> void; 
 
 private:
   RT11FS::MemoryDataSource &dataSource;
