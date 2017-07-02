@@ -429,7 +429,7 @@ auto Directory::insertEmptyAt(DirPtr &dirp) -> int
 {
   auto eos = advanceToEndOfSegment(dirp);
 
-  if (eos.getSegment() >= maxEntriesPerSegment() - 1) {
+  if (eos.getIndex() >= maxEntriesPerSegment() - 1) {
     auto err = spillLastEntry(dirp);
     if (err) {
       return err;
@@ -487,7 +487,7 @@ auto Directory::deleteEmptyAt(DirPtr &dirp) -> void
 }
 
 /**
- * Move the last enty in the pointed-to segment to the next segment.
+ * Move the last entry in the pointed-to segment to the next segment.
  *
  * The last entry is the enter just before the end of segment marker. If
  * there is no other entry in the segment (i.e. just the end of segment marker)

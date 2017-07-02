@@ -90,6 +90,17 @@ auto DirPtr::setSegmentWord(int offset, uint16_t v) -> void
   dirblk->setWord(segbase + offset, v);
 }
 
+/**
+ * Gets a word in the segment header of the referenced segment.
+ *
+ * @param offs the offset into the header.
+ * @return the value of the header word at the given offset
+ */
+auto DirPtr::getSegmentWord(int offset) -> uint16_t
+{
+  return dirblk->extractWord(segbase + offset);
+}
+
 /** 
  * Test the status word for set bits.
  * 
@@ -170,7 +181,7 @@ auto DirPtr::operator--(int) -> DirPtr
 auto DirPtr::prev() const -> DirPtr
 {
   auto prevp = *this;
-  return ++prevp;
+  return --prevp;
 }
 
 /**
