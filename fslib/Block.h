@@ -13,6 +13,7 @@ public:
 
   Block(int sector, int count);
 
+  auto getByte(int offset) -> uint8_t;
   auto extractWord(int offset) -> uint16_t;
 
   auto copyOut(int offset, int bytes, char *dest) -> void;

@@ -18,6 +18,19 @@ Block::Block(int sector, int count)
   data.resize(count * SECTOR_SIZE);
 }
 
+/**
+ * Get a byte from the block.
+ *
+ * Throws std::out_of_range if offset is invalid.
+ *
+ * @param offset is the offset of the byte to retrieve.
+ * @return the value of the byte at `offset'.
+ */
+auto Block::getByte(int offset) -> uint8_t
+{
+  return data.at(offset);
+}
+
 // Extract a word from the block in PDP-11 byte order
 auto Block::extractWord(int offset) -> uint16_t
 {

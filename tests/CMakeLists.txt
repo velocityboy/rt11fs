@@ -20,6 +20,7 @@ add_definitions(-D_DARWIN_USE_64_BIT_INODE)
 
 add_executable (tests
   TestBlock.cpp
+  TestBlockCache.cpp
 )
 #link_directories(/usr/local/lib)
 include_directories(/usr/local/include ${GTEST_INCLUDE_DIRS})

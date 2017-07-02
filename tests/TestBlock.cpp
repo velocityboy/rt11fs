@@ -17,10 +17,6 @@ using std::out_of_range;
 using std::make_unique;
 
 namespace {
-class BlockTest : public ::testing::Test
-{
-};
-
 TEST(Block, BlockBasics)
 {
   auto size = 3 * Block::SECTOR_SIZE;
