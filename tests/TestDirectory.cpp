@@ -54,7 +54,8 @@ TEST_F(DirectoryTest, BasicEnumeration)
   vector<vector<Ent>> dirdata = {
     {
       Ent {E_PERM, 2, { 1, 2, 3 }},
-      Ent {E_EOS, DirectoryBuilder::REST_OF_DATA}
+      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA},
+      Ent {E_EOS},
     },
   };
 
@@ -86,10 +87,13 @@ TEST_F(DirectoryTest, BasicEnumeration)
   EXPECT_EQ(dirp.getSegment(), 1);
   EXPECT_EQ(dirp.getIndex(), 1);
   EXPECT_EQ(dirp.offset(0), FIRST_ENTRY_OFFSET + ENTRY_LENGTH);
-  EXPECT_TRUE(dirp.hasStatus(E_EOS));
+  EXPECT_TRUE(dirp.hasStatus(E_MPTY));
   EXPECT_FALSE(dirp.hasStatus(E_PERM));
 
   ++dirp;
+  EXPECT_TRUE(dirp.hasStatus(E_EOS));
+
+  ++dirp;  
   EXPECT_FALSE(dirp.beforeStart());
   EXPECT_TRUE(dirp.afterEnd());
 }
@@ -103,7 +107,8 @@ TEST_F(DirectoryTest, GetByName)
     {
       Ent {E_PERM, 2, { 1, 2, 3 }},
       Ent {E_PERM, 2, { 075131, 062000, 075273 }},      // SWAP.SYS
-      Ent {E_EOS, DirectoryBuilder::REST_OF_DATA}
+      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA},
+      Ent {E_EOS},
     },
   };
 
@@ -134,7 +139,8 @@ TEST_F(DirectoryTest, GetByNameInSecondSegment)
     {
       Ent {E_PERM, 2, { 1, 2, 3 }},
       Ent {E_PERM, 2, { 075131, 062000, 075273 }},      // SWAP.SYS
-      Ent {E_EOS, DirectoryBuilder::REST_OF_DATA}
+      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA},
+      Ent {E_EOS},
     },
   };
 
@@ -159,7 +165,8 @@ TEST_F(DirectoryTest, GetByRad50)
     {
       Ent {E_PERM, 2, { 1, 2, 3 }},
       Ent {E_PERM, 3, { 075131, 062000, 075273 }},      // SWAP.SYS
-      Ent {E_EOS, DirectoryBuilder::REST_OF_DATA}
+      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA},
+      Ent {E_EOS},
     },
   };
 
@@ -203,7 +210,8 @@ TEST_F(DirectoryTest, GetByRad50InSecondSegment)
     {
       Ent {E_PERM, 2, { 1, 2, 3 }},
       Ent {E_PERM, 2, { 075131, 062000, 075273 }},      // SWAP.SYS
-      Ent {E_EOS, DirectoryBuilder::REST_OF_DATA}
+      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA},
+      Ent {E_EOS},
     },
   };
 
@@ -230,8 +238,8 @@ TEST_F(DirectoryTest, MoveNextFiltered)
     {
       Ent {E_MPTY, 2 },
       Ent {E_PERM, 3, { 075131, 062000, 075273 }},      // SWAP.SYS
-      Ent {E_MPTY, 2 },
-      Ent {E_EOS, DirectoryBuilder::REST_OF_DATA}
+      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA},
+      Ent {E_EOS},
     },
   };
 
@@ -253,5 +261,39 @@ TEST_F(DirectoryTest, MoveNextFiltered)
   EXPECT_FALSE(found);
 }
 
+TEST_F(DirectoryTest, StatFS)
+{
+  auto segments = 8;
 
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_MPTY, 2 },
+      Ent {E_PERM, 3, { 075131, 062000, 075273 }},      // SWAP.SYS
+      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA},
+      Ent {E_EOS}
+    },
+  };
+
+  builder.formatWithEntries(segments, dirdata);
+
+  auto inodeSpacePerSegment = Block::SECTOR_SIZE * SECTORS_PER_SEGMENT - FIRST_ENTRY_OFFSET;
+  auto inodesPerSegment = (inodeSpacePerSegment / ENTRY_LENGTH - 1);
+  auto inodes = inodesPerSegment * segments;
+
+  auto dataSectors = sectors - FIRST_SEGMENT_SECTOR - segments * SECTORS_PER_SEGMENT;
+  auto availSectors = dataSectors - 3;
+
+  auto dir = Directory {blockCache.get()};
+
+  struct statvfs st;
+  auto err = dir.statfs(&st);
+  EXPECT_EQ(err, 0);
+
+  EXPECT_EQ(st.f_bfree, availSectors);
+  EXPECT_EQ(st.f_bavail, availSectors);
+  EXPECT_EQ(st.f_files, inodes);
+  EXPECT_EQ(st.f_ffree, inodes - 1);
+  EXPECT_EQ(st.f_favail, inodes - 1);
+}
 }

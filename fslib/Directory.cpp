@@ -231,25 +231,29 @@ auto Directory::statfs(struct statvfs *vfs) -> int
 
   auto segs = dirblk->extractWord(TOTAL_SEGMENTS);
   auto xtra = dirblk->extractWord(EXTRA_BYTES);
-  auto perseg = (Block::SECTOR_SIZE - FIRST_ENTRY_OFFSET) / (ENTRY_LENGTH + xtra);
+  // -1 because we have to leave space for the end of segment marker
+  auto perseg = (SECTORS_PER_SEGMENT * Block::SECTOR_SIZE - FIRST_ENTRY_OFFSET) / (ENTRY_LENGTH + xtra) - 1;
   auto inodes = perseg * segs;
 
   vfs->f_blocks = cache->getVolumeSectors() - (FIRST_SEGMENT_SECTOR + segs * SECTORS_PER_SEGMENT);
 
   auto ptr = startScan();
-  auto ent = DirEnt {};
     
   auto usedinodes = 0;
   auto usedblocks = 0;
   auto freeblocks = 0;
 
   while (++ptr) {
-    getEnt(ptr, ent);
-    if (ptr.hasStatus(E_MPTY)) {
-      freeblocks += ent.length;
+    auto status = ptr.getWord(STATUS_WORD);
+    auto length = ptr.getWord(TOTAL_LENGTH_WORD);
+
+    if ((status & E_MPTY) != 0) {
+      freeblocks += length;
     } else {
-      usedblocks += ent.length;
-      usedinodes++;
+      usedblocks += length;
+      if ((status & E_EOS) == 0) {
+        usedinodes++;
+      }
     }
   }
 
@@ -747,4 +751,4 @@ auto Directory::parseFilename(const std::string &name, Rad50Name &rad50) -> bool
   return true;
 }
 
-}
+} 
