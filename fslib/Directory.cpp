@@ -660,7 +660,7 @@ auto Directory::carveFreeBlock(DirPtr &dirp, int size) -> int
   }
 
   // if the new block is larger than we need, carve it up
-  if (dirp.getWord(TOTAL_LENGTH_WORD) < size) {
+  if (size < dirp.getWord(TOTAL_LENGTH_WORD)) {
     auto next = dirp.next();
     auto err = insertEmptyAt(next);
     if (err) {
