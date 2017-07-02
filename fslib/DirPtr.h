@@ -18,6 +18,7 @@ public:
   auto getIndex() const { return index; }
   auto getDataSector() const { return datasec; }
   auto getWord(int offs) const -> uint16_t;
+  auto getByte(int offs) const -> uint8_t;
   auto setByte(int offs, uint8_t v) -> void;
   auto setWord(int offs, uint16_t v) -> void;
   auto setSegmentWord(int offset, uint16_t v) -> void;

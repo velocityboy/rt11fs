@@ -277,6 +277,8 @@ TEST_F(DirectoryTest, StatFS)
 
   builder.formatWithEntries(segments, dirdata);
 
+  auto dir = Directory {blockCache.get()};
+
   auto inodeSpacePerSegment = Block::SECTOR_SIZE * SECTORS_PER_SEGMENT - FIRST_ENTRY_OFFSET;
   auto inodesPerSegment = (inodeSpacePerSegment / ENTRY_LENGTH - 1);
   auto inodes = inodesPerSegment * segments;
@@ -284,7 +286,6 @@ TEST_F(DirectoryTest, StatFS)
   auto dataSectors = sectors - FIRST_SEGMENT_SECTOR - segments * SECTORS_PER_SEGMENT;
   auto availSectors = dataSectors - 3;
 
-  auto dir = Directory {blockCache.get()};
 
   struct statvfs st;
   auto err = dir.statfs(&st);
@@ -295,5 +296,140 @@ TEST_F(DirectoryTest, StatFS)
   EXPECT_EQ(st.f_files, inodes);
   EXPECT_EQ(st.f_ffree, inodes - 1);
   EXPECT_EQ(st.f_favail, inodes - 1);
+}
+
+TEST_F(DirectoryTest, TruncateShrinkSimple)
+{
+  auto segments = 8;
+  auto swapFilename = Rad50Name { 075131, 062000, 075273 };   // SWAP.SYS
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_MPTY, 2 },
+      Ent {E_PERM, 3, swapFilename },      
+      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA},
+      Ent {E_EOS}
+    },
+  };
+
+  builder.formatWithEntries(segments, dirdata);
+
+  auto dir = Directory {blockCache.get()};
+  auto dirp = dir.getDirPointer(swapFilename);
+  auto tailp = dirp.next();
+
+  auto tailLength = tailp.getWord(TOTAL_LENGTH_WORD);
+
+  EXPECT_EQ(dirp.getIndex(), 1);
+
+  auto ent = DirEnt {};
+  EXPECT_TRUE(dir.getEnt(dirp, ent));
+  EXPECT_EQ(dir.truncate(ent, 0), 0);
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapFilename[0]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), swapFilename[1]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), swapFilename[2]);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 0);
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+
+  EXPECT_EQ(tailp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(tailp.getWord(TOTAL_LENGTH_WORD), tailLength + 3);
+
+  ++tailp;
+
+  EXPECT_EQ(tailp.getWord(STATUS_WORD), E_EOS);    
+}
+
+TEST_F(DirectoryTest, TruncateGrowSimple)
+{
+  auto segments = 8;
+  auto swapFilename = Rad50Name { 075131, 062000, 075273 };   // SWAP.SYS
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_MPTY, 2 },
+      Ent {E_PERM, 3, swapFilename },      
+      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA},
+      Ent {E_EOS}
+    },
+  };
+
+  builder.formatWithEntries(segments, dirdata);
+
+  auto dir = Directory {blockCache.get()};
+  auto dirp = dir.getDirPointer(swapFilename);
+  auto tailp = dirp.next();
+
+  auto tailLength = tailp.getWord(TOTAL_LENGTH_WORD);
+
+  EXPECT_EQ(dirp.getIndex(), 1);
+
+  auto ent = DirEnt {};
+  EXPECT_TRUE(dir.getEnt(dirp, ent));
+  EXPECT_EQ(dir.truncate(ent, 6 * Block::SECTOR_SIZE), 0);
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapFilename[0]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), swapFilename[1]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), swapFilename[2]);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 6);
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+
+  EXPECT_EQ(tailp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(tailp.getWord(TOTAL_LENGTH_WORD), tailLength - 3);
+
+  ++tailp;
+
+  EXPECT_EQ(tailp.getWord(STATUS_WORD), E_EOS);    
+}
+
+TEST_F(DirectoryTest, TruncateGrowSizeRounding)
+{
+  auto segments = 8;
+  auto swapFilename = Rad50Name { 075131, 062000, 075273 };   // SWAP.SYS
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_MPTY, 2 },
+      Ent {E_PERM, 3, swapFilename },      
+      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA},
+      Ent {E_EOS}
+    },
+  };
+
+  builder.formatWithEntries(segments, dirdata);
+
+  auto dir = Directory {blockCache.get()};
+  auto dirp = dir.getDirPointer(swapFilename);
+  auto tailp = dirp.next();
+
+  auto tailLength = tailp.getWord(TOTAL_LENGTH_WORD);
+
+  EXPECT_EQ(dirp.getIndex(), 1);
+
+  auto ent = DirEnt {};
+  EXPECT_TRUE(dir.getEnt(dirp, ent));
+  EXPECT_EQ(dir.truncate(ent, 5 * Block::SECTOR_SIZE + 1), 0);
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapFilename[0]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), swapFilename[1]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), swapFilename[2]);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 6);
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+
+  EXPECT_EQ(tailp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(tailp.getWord(TOTAL_LENGTH_WORD), tailLength - 3);
+
+  ++tailp;
+
+  EXPECT_EQ(tailp.getWord(STATUS_WORD), E_EOS);    
 }
 }

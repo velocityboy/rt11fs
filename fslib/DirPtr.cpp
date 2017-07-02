@@ -47,6 +47,17 @@ auto DirPtr::getWord(int offs) const -> uint16_t
 }
 
 /**
+ * Return a byte from the current entry.
+ *
+ * @param offs the offset into the entry.
+ * @return the byte value at the given offset
+ */
+auto DirPtr::getByte(int offs) const -> uint8_t
+{
+  return dirblk->getByte(offset(offs));
+}
+
+/**
  * Sets a byte in the current entry.
  *
  * @param offs the offset into the entry.
