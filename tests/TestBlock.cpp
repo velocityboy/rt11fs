@@ -1,5 +1,5 @@
 #include "Block.h"
-#include "FileDataSource.h"
+#include "MemoryDataSource.h"
 #include "FilesystemException.h"
 #include "gtest/gtest.h"
 
@@ -23,11 +23,11 @@ class BlockTest : public ::testing::Test
 
 TEST(Block, BlockBasics)
 {
-  char test[] = "tst.XXXXX";
-  auto fd = mkstemp(test);
-  auto data = array<char, 3 * Block::SECTOR_SIZE> {};
+  auto size = 3 * Block::SECTOR_SIZE;
+  auto dataSource = make_unique<MemoryDataSource>(size);
+  auto data = dataSource->getData();
 
-  for (auto i = 0; i < data.size(); i++) {
+  for (auto i = 0; i < size; i++) {
     data[i] = i & 0xff;
   }
 
@@ -37,14 +37,9 @@ TEST(Block, BlockBasics)
   data[testSector * Block::SECTOR_SIZE] = testWord & 0xff;
   data[testSector * Block::SECTOR_SIZE + 1] = (testWord >> 8) & 0xff;
 
-  write(fd, &data[0], data.size());
-
   auto block = Block {2, 1};
 
-  auto dataSource = make_unique<FileDataSource>(fd);
-
   block.read(dataSource.get());
-
 
   EXPECT_EQ(block.getSector(), testSector);
   EXPECT_EQ(block.getCount(), 1);
@@ -126,8 +121,6 @@ TEST(Block, BlockBasics)
   } catch (...) {
     FAIL() << "Expected filesystem exception";
   }
-
-  unlink(test);
 }
 
 }

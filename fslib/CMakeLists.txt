@@ -7,6 +7,7 @@ add_library (fslib
   FileDataSource.cpp
   FileSystem.cpp
   LogUnimpl.cpp
+  MemoryDataSource.cpp
   Rad50.cpp
 )
 
