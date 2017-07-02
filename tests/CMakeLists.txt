@@ -21,8 +21,8 @@ add_definitions(-D_DARWIN_USE_64_BIT_INODE)
 add_executable (tests
   TestBlock.cpp
   TestBlockCache.cpp
+  TestDirectory.cpp
 )
-#link_directories(/usr/local/lib)
 include_directories(/usr/local/include ${GTEST_INCLUDE_DIRS})
 target_link_libraries(tests LINK_PUBLIC ${GTEST_BOTH_LIBRARIES} fslib)
 
