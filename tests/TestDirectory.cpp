@@ -158,7 +158,7 @@ TEST_F(DirectoryTest, GetByRad50)
   vector<vector<Ent>> dirdata = {
     {
       Ent {E_PERM, 2, { 1, 2, 3 }},
-      Ent {E_PERM, 2, { 075131, 062000, 075273 }},      // SWAP.SYS
+      Ent {E_PERM, 3, { 075131, 062000, 075273 }},      // SWAP.SYS
       Ent {E_EOS, DirectoryBuilder::REST_OF_DATA}
     },
   };
@@ -175,6 +175,14 @@ TEST_F(DirectoryTest, GetByRad50)
   EXPECT_FALSE(dirp.afterEnd());
   EXPECT_EQ(dirp.getSegment(), 1);
   EXPECT_EQ(dirp.getIndex(), 1);
+
+  auto ent = DirEnt {};
+  auto gotent = dir.getEnt(dirp, ent);
+  EXPECT_TRUE(gotent);
+  EXPECT_EQ(ent.status, E_PERM);
+  EXPECT_EQ(ent.length, 3 * Block::SECTOR_SIZE);
+  EXPECT_EQ(ent.sector0, 6 + 8 * 2 + 2);
+
 
   search = Rad50Name { 075131, 062000, 075274 };
 
