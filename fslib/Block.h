@@ -5,6 +5,7 @@
 #include <vector>
 
 namespace RT11FS {
+class DataSource;
 class Block
 {
 public:
@@ -24,8 +25,8 @@ public:
   auto getSector() { return sector; }
   auto getCount() { return count; }
 
-  auto read(int fd) -> void;
-  auto resize(int newCount, int fd) -> void;
+  auto read(DataSource *dataSource) -> void;
+  auto resize(int newCount, DataSource *dataSource) -> void;
 
   auto addRef() { return ++refcount; }
   auto release() { return --refcount; }

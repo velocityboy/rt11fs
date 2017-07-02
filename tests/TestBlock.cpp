@@ -1,10 +1,12 @@
 #include "Block.h"
+#include "FileDataSource.h"
 #include "FilesystemException.h"
 #include "gtest/gtest.h"
 
 #include <array>
 #include <cerrno>
 #include <cstring>
+#include <memory>
 #include <stdexcept>
 #include <unistd.h>
 
@@ -12,6 +14,7 @@ using namespace RT11FS;
 
 using std::array;
 using std::out_of_range;
+using std::make_unique;
 
 namespace {
 class BlockTest : public ::testing::Test
@@ -38,7 +41,9 @@ TEST(Block, BlockBasics)
 
   auto block = Block {2, 1};
 
-  block.read(fd);
+  auto dataSource = make_unique<FileDataSource>(fd);
+
+  block.read(dataSource.get());
 
 
   EXPECT_EQ(block.getSector(), testSector);
@@ -68,7 +73,7 @@ TEST(Block, BlockBasics)
   EXPECT_EQ(block.extractWord(2), testWord);
 
   // re-reading the block should clear the dirty flag
-  block.read(fd);
+  block.read(dataSource.get());
   EXPECT_FALSE(block.isDirty());
 
   // copying data around
@@ -82,7 +87,7 @@ TEST(Block, BlockBasics)
 
   // copying data between blocks
   auto otherBlock = Block {0, 1};
-  otherBlock.read(fd);
+  otherBlock.read(dataSource.get());
 
   nextWord = otherBlock.extractWord(4);
   EXPECT_NE(otherBlock.extractWord(2), testWord);
@@ -108,13 +113,13 @@ TEST(Block, BlockBasics)
   }
 
   // if we resize the block, it should work
-  otherBlock.resize(3, fd);
+  otherBlock.resize(3, dataSource.get());
   EXPECT_EQ(otherBlock.extractWord(2 * Block::SECTOR_SIZE), testWord);
 
   // expect IO exception if reading past end
   auto invalidBlock = Block{3, 1};
   try {
-    invalidBlock.read(fd);    
+    invalidBlock.read(dataSource.get());    
     FAIL() << "Expected filesystem exception";
   } catch (FilesystemException &ex) {
     EXPECT_EQ(ex.getError(), -EIO);
@@ -122,7 +127,6 @@ TEST(Block, BlockBasics)
     FAIL() << "Expected filesystem exception";
   }
 
-  close(fd);
   unlink(test);
 }
 

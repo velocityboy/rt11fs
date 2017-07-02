@@ -1,6 +1,7 @@
 #include "BlockCache.h"
 #include "Directory.h"
 #include "File.h"
+#include "FileDataSource.h"
 #include "FileSystem.h"
 #include "FileSystemException.h"
 
@@ -27,7 +28,9 @@ FileSystem::FileSystem(const string &name)
     throw FilesystemException {-ENOENT, "volume file could not be opened"};
   }
 
-  cache = make_unique<BlockCache>(fd);
+  dataSource = make_unique<FileDataSource>(fd);
+
+  cache = make_unique<BlockCache>(dataSource.get());
   directory = make_unique<Directory>(cache.get());
 }
 

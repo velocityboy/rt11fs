@@ -4,6 +4,7 @@ add_library (fslib
   Directory.cpp
   DirPtr.cpp
   File.cpp
+  FileDataSource.cpp
   FileSystem.cpp
   LogUnimpl.cpp
   Rad50.cpp

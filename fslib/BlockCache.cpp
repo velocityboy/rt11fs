@@ -1,4 +1,5 @@
 #include "BlockCache.h"
+#include "DataSource.h"
 #include "FilesystemException.h"
 
 #include <algorithm>
@@ -11,13 +12,14 @@ using std::unique_ptr;
 
 namespace RT11FS {
 
-BlockCache::BlockCache(int fd) 
-  : fd(fd)
+BlockCache::BlockCache(DataSource *dataSource) 
+  : dataSource(dataSource)
 {
   struct stat st;
 
-  if (fstat(fd, &st) == -1) {
-    throw FilesystemException {-EIO, "Could not stat disk image"};
+  auto err = dataSource->stat(&st);
+  if (err) {
+    throw FilesystemException {err, "Could not stat disk image"};
   }
 
   sectors = st.st_size / Block::SECTOR_SIZE;
@@ -58,7 +60,7 @@ auto BlockCache::getBlock(int sector, int count) -> Block *
   }
 
   auto bp = new Block {sector, count};
-  bp->read(fd);
+  bp->read(dataSource);
 
   blocks.insert(cacheIter, move(unique_ptr<Block>{bp}));
   return bp;
@@ -92,7 +94,7 @@ auto BlockCache::resizeBlock(Block *bp, int count) -> void
     throw FilesystemException {-EINVAL, "Block resize would cause overlap, or non-positive size"};    
   }
 
-  bp->resize(count, fd);
+  bp->resize(count, dataSource);
 }
 
 }

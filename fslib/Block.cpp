@@ -1,4 +1,5 @@
 #include "Block.h"
+#include "DataSource.h"
 #include "FilesystemException.h"
 
 #include <cerrno>
@@ -39,17 +40,16 @@ auto Block::setWord(int offset, uint16_t value) -> void
 }
 
 // Read the contents of the file system image into the block.
-auto Block::read(int fd) -> void
+auto Block::read(DataSource *dataSource) -> void
 {
   auto toSeek = sector * SECTOR_SIZE;
   auto toRead = count * SECTOR_SIZE;
 
-  if (lseek(fd, toSeek, SEEK_SET) != toSeek) {
-    throw FilesystemException {-EIO, "could not seek to block"};
-  }
-
-  if (::read(fd, &data[0], toRead) != toRead) {
-    throw FilesystemException {-EIO, "could not read full block"};
+  // Data source is defined to return an error if the entire read cannot 
+  // be satisfied
+  int err = dataSource->read(&data[0], toRead, toSeek);
+  if (err < 0) {
+    throw FilesystemException {err, "could not read block"};
   }
 
   dirty = false;
@@ -129,7 +129,7 @@ auto Block::copyFromOtherBlock(Block *source, int sourceOffset, int destOffset, 
 
 // Resize the block to a new number of sectors. If the block is
 // growing, then fill the new space from the file system image.
-auto Block::resize(int newCount, int fd) -> void
+auto Block::resize(int newCount, DataSource *dataSource) -> void
 {
   data.resize(newCount * SECTOR_SIZE);  
 
@@ -139,12 +139,9 @@ auto Block::resize(int newCount, int fd) -> void
     auto at = count * SECTOR_SIZE;
 
     try {
-      if (lseek(fd, toSeek, SEEK_SET) != toSeek) {
-        throw FilesystemException {-EIO, "could not seek to block"};
-      }
-
-      if (::read(fd, &data[at], toRead) != toRead) {
-        throw FilesystemException {-EIO, "could not read full block"};
+      int err = dataSource->read(&data[at], toRead, toSeek);
+      if (err < 0) {
+        throw FilesystemException {err, "could not read block"};
       }
     } catch (exception) {
       data.resize(count);

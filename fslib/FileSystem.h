@@ -10,6 +10,7 @@
 namespace RT11FS {
 
 class BlockCache;
+class DataSource;
 class Directory;
 struct DirEnt;
 class File;
@@ -33,7 +34,8 @@ public:
   auto ftruncate(const char *path, off_t size, struct fuse_file_info *fi) -> int;
 
 private:
-  int fd;  
+  int fd;
+  std::unique_ptr<DataSource> dataSource;
   std::unique_ptr<BlockCache> cache;
   std::unique_ptr<Directory> directory;
   std::vector<std::unique_ptr<File>> files;

@@ -7,9 +7,11 @@
 #include <memory>
 
 namespace RT11FS {
+class DataSource;
+
 class BlockCache {
 public:
-  BlockCache(int fd);
+  BlockCache(DataSource *dataSource);
   ~BlockCache();
 
   auto getBlock(int sector, int count) -> Block *;
@@ -18,7 +20,7 @@ public:
   auto getVolumeSectors() { return sectors; }
 
 private:
-  int fd;
+  DataSource *dataSource;
   int sectors;
   std::list<std::unique_ptr<Block>> blocks;
 };
