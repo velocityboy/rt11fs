@@ -886,4 +886,120 @@ TEST_F(DirectoryTest, TruncateShrinkAndMergeFree)
   EXPECT_EQ(dirp.getWord(STATUS_WORD), E_EOS);
 }
 
+TEST_F(DirectoryTest, TruncateShrinkWithSpillToAllocatedSegment)
+{
+  auto segments = 8;
+  auto swapFilename = Rad50Name { 075131, 062000, 075273 };   // SWAP.SYS
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_PERM, 3, swapFilename },
+    },
+  };
+
+  // The scenario we're building (n == max entries per segment)
+  // Segment 1: 
+  //   0: file to shrink
+  //   1..n-2: permanent, 1 sector files
+  //   n-1: EOS
+  // No allocated second segment
+  //
+  // truncating 1:0 to shrink will make everything in segment 1 have to move 
+  // down, and the last file entry will have to move to segment 2 (which will
+  // be allocated)
+
+  auto entries = segmentsPerEntry();
+
+  auto &firstSeg = dirdata[0];
+  auto index = uint16_t {1};
+
+  while (firstSeg.size() < entries - 1) {
+    firstSeg.push_back(Ent {
+      E_PERM,
+      1,
+      Rad50Name {index, index, index}
+    });
+    index++;
+  }
+  firstSeg.push_back(Ent{E_EOS});
+
+  builder.formatWithEntries(segments, dirdata);
+
+  auto dir = Directory {blockCache.get()};
+    
+  uint16_t lastFile = index - 1;
+  auto dirp = dir.getDirPointer(Rad50Name {lastFile, lastFile, lastFile});
+  auto lastFileSector = dirp.getDataSector();
+
+  dirp = dir.getDirPointer(swapFilename);
+
+  // make sure the directory builder put togther the headers we expect
+  EXPECT_EQ(dirp.getSegmentWord(TOTAL_SEGMENTS), segments);
+  EXPECT_EQ(dirp.getSegmentWord(NEXT_SEGMENT), 0);
+  EXPECT_EQ(dirp.getSegmentWord(HIGHEST_SEGMENT), 1);
+
+  auto ent = DirEnt {};
+  EXPECT_TRUE(dir.getEnt(dirp, ent));
+  EXPECT_EQ(dir.truncate(ent, 0), 0);
+    
+  dirp = dir.startScan();
+  ++dirp;
+
+  // we should have the original entry, but with zero length
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapFilename[0]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), swapFilename[1]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), swapFilename[2]);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 0);
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+
+  ++dirp;
+
+  // now we should have a free block of the size the file used to be
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 3);
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+
+  // we should have one less than the number of files we had before
+  for (auto i = 1; i < index - 1; i++) {
+    ++dirp;
+    EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+    EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), i);
+    EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), i);
+    EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), i);
+    EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 1);
+    EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+    EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+  }
+
+  ++dirp;
+
+  // now we should have this segment's end
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_EOS);
+
+  ++dirp;
+
+  // We should be on to the next segment and have the spilled index entry
+  EXPECT_EQ(dirp.getSegment(), 2);
+  EXPECT_EQ(dirp.getIndex(), 0);
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), index - 1);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), index - 1);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), index - 1);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 1);
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+  EXPECT_EQ(dirp.getDataSector(), lastFileSector);
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_EOS);
+
+  // Make doubly sure the starting sector of the second segment has been 
+  // updated
+  EXPECT_EQ(dirp.getSegmentWord(SEGMENT_DATA_BLOCK), lastFileSector);
+}
 }

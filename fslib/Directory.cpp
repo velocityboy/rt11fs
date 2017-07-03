@@ -596,7 +596,7 @@ auto Directory::allocateNewSegment() -> int
   }
 
   // unused segments are not initialized yet
-  int header = (FIRST_SEGMENT_SECTOR + (next - 1) * SECTORS_PER_SEGMENT) * Block::SECTOR_SIZE;
+  int header = (next - 1) * SECTORS_PER_SEGMENT * Block::SECTOR_SIZE;
   dirblk->setWord(header + TOTAL_SEGMENTS, dirblk->extractWord(TOTAL_SEGMENTS));
   dirblk->setWord(header + NEXT_SEGMENT, 0);
   dirblk->setWord(header + HIGHEST_SEGMENT, 0);   // per docs, only set in segment 1
@@ -615,6 +615,8 @@ auto Directory::allocateNewSegment() -> int
 
   // `next' is now a valid segment and we can link it i
   eos.setSegmentWord(NEXT_SEGMENT, next);
+
+  dirblk->setWord(HIGHEST_SEGMENT, next);
 
   return 0;
 }
