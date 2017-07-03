@@ -635,6 +635,10 @@ auto Directory::findLargestFreeBlock() -> DirPtr
   auto dirp = startScan();
 
   while (++dirp) {
+    if (!dirp.hasStatus(E_MPTY)) {
+      continue;
+    }
+    
     auto length = dirp.getWord(TOTAL_LENGTH_WORD);
     if (length > largestBlock) {
       largestBlock = length;

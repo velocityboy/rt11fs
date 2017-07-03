@@ -1082,4 +1082,62 @@ TEST_F(DirectoryTest, TruncateShrinkWithNoRoom)
   ++dirp;
   EXPECT_EQ(dirp.getWord(STATUS_WORD), E_EOS);
 }
+
+TEST_F(DirectoryTest, TruncateGrowWithNoSpace)
+{
+  auto segments = 1;
+  auto swapFilename = Rad50Name { 075131, 062000, 075273 };   // SWAP.SYS
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_MPTY, 2 },
+      Ent {E_PERM, 3, swapFilename },
+      Ent {E_PERM, sectors - (6 + 2 + 2 + 3 + 3), Rad50Name {1, 2, 3}},      
+      Ent {E_MPTY, 3 },
+      Ent {E_EOS}
+    },
+  };
+
+  builder.formatWithEntries(segments, dirdata);
+
+  auto dir = Directory {blockCache.get()};
+
+  auto dirp = dir.getDirPointer(swapFilename);
+  auto ent = DirEnt {};
+  EXPECT_TRUE(dir.getEnt(dirp, ent));
+  EXPECT_EQ(dir.truncate(ent, 6 * Block::SECTOR_SIZE), -ENOSPC);
+
+  // ensure nothing changed
+  dirp = dir.startScan();
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 2);
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapFilename[0]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), swapFilename[1]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), swapFilename[2]);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 3);
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), 1);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), 2);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), 3);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), sectors - (6 + 2 + 2 + 3 + 3));
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 3);
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_EOS);
+}
 }
