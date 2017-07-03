@@ -726,4 +726,164 @@ TEST_F(DirectoryTest, TruncateShrinkWithSpill)
   EXPECT_EQ(dirp.getSegmentWord(SEGMENT_DATA_BLOCK), lastFileSector);
 }
 
+TEST_F(DirectoryTest, TruncateShrinkAndDeleteFree)
+{
+  auto segments = 8;
+  auto swapFilename = Rad50Name { 075131, 062000, 075273 };   // SWAP.SYS
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_MPTY, 2},
+      Ent {E_PERM, 3, swapFilename},  // we will grow this to 6 and subsume the following free entry
+      Ent {E_MPTY, 3},      
+      Ent {E_PERM, 5, Rad50Name {1, 2, 3}},      
+      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA},
+      Ent {E_EOS}
+    },
+  };
+
+  builder.formatWithEntries(segments, dirdata);
+
+  auto dir = Directory {blockCache.get()};
+  auto dirp = dir.getDirPointer(swapFilename);
+  auto nextp = dirp.next().next();
+  auto secondFileSector = nextp.getDataSector();
+  auto tailp = nextp.next();
+  auto tailSectors = tailp.getWord(TOTAL_LENGTH_WORD);
+
+  auto ent = DirEnt {};
+  EXPECT_TRUE(dir.getEnt(dirp, ent));
+  EXPECT_EQ(dir.truncate(ent, 6 * Block::SECTOR_SIZE), 0);
+
+  // dirp should point to an entry that just has the length changed
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapFilename[0]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), swapFilename[1]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), swapFilename[2]);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 6);
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+
+  ++dirp;
+
+  // the free space entry should be gone, replaced by the real second file
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), 1);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), 2);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), 3);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 5);
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+  EXPECT_EQ(dirp.getDataSector(), secondFileSector);
+
+  ++dirp;
+
+  // next should be the rest-of-space entry, which should not have changed length
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), tailSectors);
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+
+  ++dirp;
+
+  // and finally we should still have the end of segment marker
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_EOS);
+}
+
+TEST_F(DirectoryTest, TruncateShrinkAndMergeFree)
+{
+  auto segments = 8;
+  auto swapFilename = Rad50Name { 075131, 062000, 075273 };   // SWAP.SYS
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_MPTY, 2},
+      Ent {E_PERM, 3, swapFilename},  // we will grow this to 6 and subsume the following free entry
+      Ent {E_MPTY, 3},      
+      Ent {E_PERM, 5, Rad50Name {1, 2, 3}},      
+      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA},
+      Ent {E_EOS}
+    },
+  };
+
+  builder.formatWithEntries(segments, dirdata);
+
+  auto dir = Directory {blockCache.get()};
+  auto dirp = dir.getDirPointer(swapFilename);
+  auto nextp = dirp.next().next();
+  auto secondFileSector = nextp.getDataSector();
+  auto tailp = nextp.next();
+  auto tailSectors = tailp.getWord(TOTAL_LENGTH_WORD);
+
+  srand(1);
+  for (auto i = 0; i < 3; i++) {
+    auto block = blockCache->getBlock(dirp.getDataSector() + i, 1);
+    for (auto j = 0; j < Block::SECTOR_SIZE; j++) {
+      block->setByte(j, rand() & 0xff);
+    }
+    blockCache->putBlock(block);
+  }
+
+  auto ent = DirEnt {};
+  EXPECT_TRUE(dir.getEnt(dirp, ent));
+  EXPECT_EQ(dir.truncate(ent, 7 * Block::SECTOR_SIZE), 0);
+
+  dirp = dir.startScan();
+  ++dirp;
+  ++dirp;
+
+  // since the file won't fit where it was, its space and the following free block 
+  // should get merged
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 6);
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+
+  ++dirp;
+
+  // that should still be followed by the real file
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), 1);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), 2);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), 3);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 5);
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+  EXPECT_EQ(dirp.getDataSector(), secondFileSector);
+
+  ++dirp;
+
+  // next should be the moved file
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapFilename[0]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), swapFilename[1]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), swapFilename[2]);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 7);
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+
+  // the first 3 sectors should be the same
+  srand(1);
+  for (auto i = 0; i < 3; i++) {
+    auto block = blockCache->getBlock(dirp.getDataSector() + i, 1);
+    for (auto j = 0; j < Block::SECTOR_SIZE; j++) {
+      EXPECT_EQ(block->getByte(j), rand() & 0xff);
+    }
+    blockCache->putBlock(block);
+  }
+
+  ++dirp;
+
+  // next should be the rest of free space
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), tailSectors - 7);
+
+  ++dirp;
+
+  // and finally we should still have the end of segment marker
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_EOS);
+}
+
 }

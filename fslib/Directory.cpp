@@ -353,14 +353,15 @@ auto Directory::growEntry(DirPtr &dirp, int newSize) -> int
       auto delta = newSize - dirp.getWord(TOTAL_LENGTH_WORD);
       dirp.setWord(TOTAL_LENGTH_WORD, newSize);
       next.setWord(TOTAL_LENGTH_WORD, next.getWord(TOTAL_LENGTH_WORD) - delta);
-    }
+    
 
-    if (next.getWord(TOTAL_LENGTH_WORD) == 0) {
-      // delete empty free space entry
-      deleteEmptyAt(next);
-    }
+      if (next.getWord(TOTAL_LENGTH_WORD) == 0) {
+        // delete empty free space entry
+        deleteEmptyAt(next);
+      }
 
-    return 0;
+      return 0;
+    }
   }
 
   // we couldn't grow the file in place, so move it to a free block
@@ -408,7 +409,16 @@ auto Directory::growEntry(DirPtr &dirp, int newSize) -> int
   dirp.setWord(FILENAME_WORDS + 4, 0);
   dirp.setByte(JOB_BYTE, 0);
   dirp.setByte(CHANNEL_BYTE, 0);
-  dirp.setWord(CREATION_DATE_WORD, 0); 
+  dirp.setWord(CREATION_DATE_WORD, 0);
+
+  // if next was a free block, but wasn't big enough to use, we still
+  // have to coalesce it with dirp
+  auto nextp = dirp.next();
+  if (nextp.hasStatus(E_MPTY)) {
+    dirp.setWord(TOTAL_LENGTH_WORD, dirp.getWord(TOTAL_LENGTH_WORD) + nextp.getWord(TOTAL_LENGTH_WORD));
+    nextp.setWord(TOTAL_LENGTH_WORD, 0);
+    deleteEmptyAt(nextp);
+  } 
 
   return 0;
 }
