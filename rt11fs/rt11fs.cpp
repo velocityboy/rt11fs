@@ -123,7 +123,12 @@ auto main(int argc, char *argv[]) -> int
     usage(argv[0]);
   }
 
+  // make FUSE responsible for enforcing permission bits
   fuse_opt_add_arg(&args, "-odefault_permissions");
+
+  // the file system isn't thread safe; make FUSE serialize requests
+  // (it isn't likely that perf will be enough of an issues that this will ever matter)
+  fuse_opt_add_arg(&args, "-s");
 
   FileSystem fs {config.image};
 
