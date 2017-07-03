@@ -72,6 +72,11 @@ auto FileSystem::getattr(const char *path, struct stat *stbuf) -> int
   });
 }
 
+auto FileSystem::fgetattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi) -> int
+{
+  return getattr(path, stbuf);
+}
+
 auto FileSystem::statfs(const char *path, struct statvfs *vfs) -> int
 {
   return wrapper([this, path, vfs]() {

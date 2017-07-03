@@ -24,6 +24,7 @@ public:
   auto getDirectory() { return directory.get(); }
 
   auto getattr(const char *path, struct stat *stbuf) -> int;
+  auto fgetattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi) -> int;
   auto statfs(const char *, struct statvfs *fs) -> int;
   auto readdir(
     const char *path, void *buf, fuse_fill_dir_t filler,

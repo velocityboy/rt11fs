@@ -28,6 +28,11 @@ auto rt11_getattr(const char *path, struct stat *stbuf) -> int
   return getFS()->getattr(path, stbuf);
 }
 
+auto rt11_fgetattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi) -> int
+{
+  return getFS()->fgetattr(path, stbuf, fi);
+}
+
 auto rt11_statfs(const char *path, struct statvfs *vfs) -> int
 {
   return getFS()->statfs(path, vfs);
@@ -74,6 +79,7 @@ auto build_oper(struct fuse_operations *oper)
   add_unimpl(oper);
 
   oper->getattr = &rt11_getattr;
+  oper->fgetattr = &rt11_fgetattr;
   oper->statfs = &rt11_statfs;
   oper->opendir = &rt11_opendir;
   oper->releasedir = &rt11_releasedir;
