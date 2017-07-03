@@ -16,6 +16,7 @@ public:
   auto offset(int delta = 0) const -> int;
   auto getSegment() const { return segment; }
   auto getIndex() const { return index; }
+  auto incIndex() { index++; }
   auto getDataSector() const { return datasec; }
   auto getWord(int offs) const -> uint16_t;
   auto getByte(int offs) const -> uint8_t;

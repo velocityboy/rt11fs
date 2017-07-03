@@ -371,9 +371,18 @@ auto Directory::growEntry(DirPtr &dirp, int newSize) -> int
     return -ENOSPC;
   }
 
-  auto err = carveFreeBlock(newp, newSize);
-  if (err) {
-    return err;
+  auto inserted = carveFreeBlock(newp, newSize);
+  if (inserted < 0) {
+    return inserted;
+  }
+
+  // we have to be careful here - carveFreeBlock may have inserted
+  // a new entry before us in the same segment
+  if (inserted == 1 && newp.getSegment() == dirp.getSegment() && newp.getIndex() < dirp.getIndex()) {
+    // we can't just increment dirp because that'll mess up it's starting sector
+    // we just need to adjust the index to match the fact that the entry moved 
+    // within the segment
+    dirp.incIndex();
   }
 
   // newp is now exactly the requested size
@@ -411,14 +420,7 @@ auto Directory::growEntry(DirPtr &dirp, int newSize) -> int
   dirp.setByte(CHANNEL_BYTE, 0);
   dirp.setWord(CREATION_DATE_WORD, 0);
 
-  // if next was a free block, but wasn't big enough to use, we still
-  // have to coalesce it with dirp
-  auto nextp = dirp.next();
-  if (nextp.hasStatus(E_MPTY)) {
-    dirp.setWord(TOTAL_LENGTH_WORD, dirp.getWord(TOTAL_LENGTH_WORD) + nextp.getWord(TOTAL_LENGTH_WORD));
-    nextp.setWord(TOTAL_LENGTH_WORD, 0);
-    deleteEmptyAt(nextp);
-  } 
+  coalesceNeighboringFreeBlocks(dirp);
 
   return 0;
 }
@@ -638,7 +640,7 @@ auto Directory::findLargestFreeBlock() -> DirPtr
     if (!dirp.hasStatus(E_MPTY)) {
       continue;
     }
-    
+
     auto length = dirp.getWord(TOTAL_LENGTH_WORD);
     if (length > largestBlock) {
       largestBlock = length;
@@ -667,7 +669,7 @@ auto Directory::findLargestFreeBlock() -> DirPtr
  *
  * @param dirp the free block to split
  * @param size the new size in sectors of `dirp'
- * @return 0 on success or a negated errno
+ * @return the number of blocks inserted (>= 0) or a negated errno
  */
 auto Directory::carveFreeBlock(DirPtr &dirp, int size) -> int
 {
@@ -686,10 +688,51 @@ auto Directory::carveFreeBlock(DirPtr &dirp, int size) -> int
     auto delta = dirp.getWord(TOTAL_LENGTH_WORD) - size;
     dirp.setWord(TOTAL_LENGTH_WORD, dirp.getWord(TOTAL_LENGTH_WORD));
     next.setWord(TOTAL_LENGTH_WORD, delta);
+
+    return 1;
   }
 
   return 0;
 }
+
+/**
+ * Combine all free blocks on either side of the current block.
+ *
+ * The current block is expected to be a free block itself.
+ *
+ * @param ptr a free block to comine
+ */
+auto Directory::coalesceNeighboringFreeBlocks(DirPtr &ptr) -> void
+{
+  if (!ptr.hasStatus(E_MPTY)) {
+    return;
+  }
+
+  auto first = ptr;
+  while (true) {
+    auto prev = first.prev();
+    if (prev.beforeStart() || !prev.hasStatus(E_MPTY)) {
+      break;
+    }
+
+    first = prev;
+  }
+
+  while (true) {
+    auto next = first.next();
+    if (next.afterEnd() || !next.hasStatus(E_MPTY)) {
+      break;
+    }
+
+    auto len = first.getWord(TOTAL_LENGTH_WORD) + next.getWord(TOTAL_LENGTH_WORD);
+
+    first.setWord(TOTAL_LENGTH_WORD, len);
+    next.setWord(TOTAL_LENGTH_WORD, 0);
+
+    deleteEmptyAt(next);
+  }
+}
+
 
 /**
  * Compute the maximum number of entries that will fit in one segment.

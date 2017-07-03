@@ -53,6 +53,7 @@ private:
   auto allocateNewSegment() -> int;
   auto findLargestFreeBlock() -> DirPtr;
   auto carveFreeBlock(DirPtr &dirp, int size) -> int;
+  auto coalesceNeighboringFreeBlocks(DirPtr &ptr) -> void;
 
   auto maxEntriesPerSegment() const -> int;
   auto advanceToEndOfSegment(const DirPtr &dirp) -> DirPtr;

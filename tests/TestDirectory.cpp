@@ -551,9 +551,13 @@ TEST_F(DirectoryTest, TruncateGrowWithMove)
   EXPECT_TRUE(dir.getEnt(dirp, ent));
   EXPECT_EQ(dir.truncate(ent, 6 * Block::SECTOR_SIZE), 0);
 
-  // the original entry should now point at a free block of the same size
+  dirp = dir.startScan();
+
+  ++dirp;
+
+  // the original entry should combine with the preceding free block
   EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
-  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 3);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 5);
   EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
   EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
 
@@ -582,13 +586,16 @@ TEST_F(DirectoryTest, TruncateGrowWithMove)
 
   // make sure the data was also moved
   srand(1);
-  for (auto i = 0; i < 3; i++) {
+  auto blockDataMatched = true;
+  for (auto i = 0; i < 3 && blockDataMatched; i++) {
     auto block = blockCache->getBlock(dirp.getDataSector() + i, 1);
-    for (auto j = 0; j < Block::SECTOR_SIZE; j++) {
-      EXPECT_EQ(block->getByte(j), rand() & 0xff);
+    for (auto j = 0; j < Block::SECTOR_SIZE && blockDataMatched; j++) {
+      blockDataMatched = (block->getByte(j) == (rand() & 0xff));
     }
     blockCache->putBlock(block);
   }
+
+  EXPECT_TRUE(blockDataMatched);
 
   ++dirp;
 
@@ -832,12 +839,11 @@ TEST_F(DirectoryTest, TruncateShrinkAndMergeFree)
 
   dirp = dir.startScan();
   ++dirp;
-  ++dirp;
 
   // since the file won't fit where it was, its space and the following free block 
   // should get merged
   EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
-  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 6);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 8);
   EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
   EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
 
@@ -866,13 +872,16 @@ TEST_F(DirectoryTest, TruncateShrinkAndMergeFree)
 
   // the first 3 sectors should be the same
   srand(1);
-  for (auto i = 0; i < 3; i++) {
+  auto blockDataMatched = true;
+  for (auto i = 0; i < 3 && blockDataMatched; i++) {
     auto block = blockCache->getBlock(dirp.getDataSector() + i, 1);
-    for (auto j = 0; j < Block::SECTOR_SIZE; j++) {
-      EXPECT_EQ(block->getByte(j), rand() & 0xff);
+    for (auto j = 0; j < Block::SECTOR_SIZE && blockDataMatched; j++) {
+      blockDataMatched = (block->getByte(j) == (rand() & 0xff));
     }
     blockCache->putBlock(block);
   }
+
+  EXPECT_TRUE(blockDataMatched);
 
   ++dirp;
 
@@ -1140,4 +1149,127 @@ TEST_F(DirectoryTest, TruncateGrowWithNoSpace)
   ++dirp;
   EXPECT_EQ(dirp.getWord(STATUS_WORD), E_EOS);
 }
+
+TEST_F(DirectoryTest, TruncateGrowIntoExactPrecedingSpace)
+{
+  auto segments = 1;
+  auto swapFilename = Rad50Name { 075131, 062000, 075273 };   // SWAP.SYS
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_MPTY, 6 },
+      Ent {E_PERM, 3, swapFilename },
+      Ent {E_PERM, sectors - (6 + 2 + 6 + 3 + 3), Rad50Name {1, 2, 3}},      
+      Ent {E_MPTY, 3 },
+      Ent {E_EOS}
+    },
+  };
+
+  // since the first free block is the largest, our file should end up there
+  // since we're asking for exactly that amount of space, nothing else should
+  // have to move around
+  //
+  builder.formatWithEntries(segments, dirdata);
+
+  auto dir = Directory {blockCache.get()};
+
+  auto dirp = dir.getDirPointer(swapFilename);
+  auto ent = DirEnt {};
+  EXPECT_TRUE(dir.getEnt(dirp, ent));
+  EXPECT_EQ(dir.truncate(ent, 6 * Block::SECTOR_SIZE), 0);
+
+  dirp = dir.startScan();
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapFilename[0]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), swapFilename[1]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), swapFilename[2]);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 6);
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 3);
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), 1);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), 2);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), 3);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), sectors - (6 + 2 + 6 + 3 + 3));
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 3);
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_EOS);
+}
+
+TEST_F(DirectoryTest, TruncateGrowIntoLargerPrecedingSpace)
+{
+  auto segments = 1;
+  auto swapFilename = Rad50Name { 075131, 062000, 075273 };   // SWAP.SYS
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_MPTY, 6 },
+      Ent {E_PERM, 3, swapFilename },
+      Ent {E_PERM, sectors - (6 + 2 + 6 + 3 + 3), Rad50Name {1, 2, 3}},      
+      Ent {E_MPTY, 3 },
+      Ent {E_EOS}
+    },
+  };
+
+  // since the first free block is the largest, our file should end up there
+  // since we're asking for exactly that amount of space, nothing else should
+  // have to move around
+  //
+  builder.formatWithEntries(segments, dirdata);
+
+  auto dir = Directory {blockCache.get()};
+
+  auto dirp = dir.getDirPointer(swapFilename);
+  auto ent = DirEnt {};
+  EXPECT_TRUE(dir.getEnt(dirp, ent));
+  EXPECT_EQ(dir.truncate(ent, 5 * Block::SECTOR_SIZE), 0);
+
+  dirp = dir.startScan();
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapFilename[0]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), swapFilename[1]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), swapFilename[2]);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 5);
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 4);
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), 1);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), 2);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), 3);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), sectors - (6 + 2 + 6 + 3 + 3));
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 3);
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_EOS);
+}
+
 }
