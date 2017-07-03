@@ -40,7 +40,7 @@ Directory::Directory(BlockCache *cache)
   // sanity: the extra bytes word had better be the same across all dir segments
   // (it's an attribute set when the directory is created.)
   while (segment) {
-    auto base = (FIRST_ENTRY_OFFSET + (segment - 1) * SECTORS_PER_SEGMENT) * Block::SECTOR_SIZE;
+    auto base = (segment - 1) * SECTORS_PER_SEGMENT * Block::SECTOR_SIZE;
     auto thisExtra = dirblk->extractWord(base + EXTRA_BYTES);
     if (thisExtra != extra) {
       throw FilesystemException {-EINVAL, "directory segments are not consistent"};

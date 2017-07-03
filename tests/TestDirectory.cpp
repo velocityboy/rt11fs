@@ -1002,4 +1002,84 @@ TEST_F(DirectoryTest, TruncateShrinkWithSpillToAllocatedSegment)
   // updated
   EXPECT_EQ(dirp.getSegmentWord(SEGMENT_DATA_BLOCK), lastFileSector);
 }
+
+TEST_F(DirectoryTest, TruncateShrinkWithNoRoom)
+{
+  auto segments = 1;
+  auto swapFilename = Rad50Name { 075131, 062000, 075273 };   // SWAP.SYS
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_PERM, 3, swapFilename },
+    },
+  };
+
+  // The scenario we're building (n == max entries per segment)
+  // Segment 1: 
+  //   0: file to shrink
+  //   1..n-2: permanent, 1 sector files
+  //   n-1: EOS
+  // No allocated second segment
+  //
+  // Since there is no segment 2, we should fail with out of space
+
+  auto entries = segmentsPerEntry();
+
+  auto &firstSeg = dirdata[0];
+  auto index = uint16_t {1};
+
+  while (firstSeg.size() < entries - 1) {
+    firstSeg.push_back(Ent {
+      E_PERM,
+      1,
+      Rad50Name {index, index, index}
+    });
+    index++;
+  }
+  firstSeg.push_back(Ent{E_EOS});
+
+  builder.formatWithEntries(segments, dirdata);
+
+  auto dir = Directory {blockCache.get()};
+    
+  auto dirp = dir.getDirPointer(swapFilename);
+  auto sector = dirp.getDataSector();
+
+  auto ent = DirEnt {};
+  EXPECT_TRUE(dir.getEnt(dirp, ent));
+  EXPECT_EQ(dir.truncate(ent, 0), -ENOSPC);
+
+  // since we had an error, nothing should have been disturbed
+  dirp = dir.startScan();
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapFilename[0]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), swapFilename[1]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), swapFilename[2]);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 3);
+  EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+  EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+  EXPECT_EQ(dirp.getDataSector(), sector);
+
+  sector += 3;
+
+  for (auto i = 1; i < index; i++) {
+    ++dirp;
+
+    EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+    EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), i);
+    EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), i);
+    EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), i);
+    EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 1);
+    EXPECT_EQ(dirp.getByte(JOB_BYTE), 0);
+    EXPECT_EQ(dirp.getByte(CHANNEL_BYTE), 0);
+    EXPECT_EQ(dirp.getDataSector(), sector);
+    sector++;
+  }
+
+  ++dirp;
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_EOS);
+}
 }
