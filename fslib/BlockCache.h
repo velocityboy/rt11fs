@@ -18,6 +18,7 @@ public:
   auto putBlock(Block *bp) -> void;
   auto resizeBlock(Block *bp, int count) -> void;
   auto getVolumeSectors() { return sectors; }
+  auto sync() -> void;
 
 private:
   DataSource *dataSource;

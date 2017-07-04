@@ -266,7 +266,7 @@ auto Directory::statfs(struct statvfs *vfs) -> int
   return 0;
 }
 
-auto Directory::truncate(const DirEnt &de, off_t newSize) -> int
+auto Directory::truncate(DirEnt &de, off_t newSize) -> int
 {
   auto dirp = getDirPointer(de.rad50_name);
   if (dirp.afterEnd()) {

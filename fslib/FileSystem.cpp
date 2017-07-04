@@ -90,6 +90,12 @@ auto FileSystem::statfs(const char *path, struct statvfs *vfs) -> int
   });
 }
 
+auto FileSystem::chmod(const char *, mode_t) -> int
+{
+  // TODO RT-11 doesn't support permissions, but we could set the R/O flag
+  return 0;
+}
+
 
 auto FileSystem::readdir(
   const char *path, void *buf, fuse_fill_dir_t filler,
@@ -126,7 +132,7 @@ auto FileSystem::open(const char *path, struct fuse_file_info *fi) -> int
     }
 
     auto fh = getEmptyFileSlot();
-    files[fh] = move(make_unique<File>(cache.get(), ent));
+    files[fh] = move(make_unique<File>(cache.get(), directory.get(), ent));
 
     fi->fh = fh;
 
@@ -153,12 +159,29 @@ auto FileSystem::read(
   });
 }
 
+auto FileSystem::write(
+  const char *path, const char *buf, size_t count, off_t offset,
+  struct fuse_file_info *fi) -> int
+{
+  return wrapper([this, path, buf, count, offset, fi] {
+    return getHandle(fi->fh)->write(buf, count, offset);
+  });
+}
+
 auto FileSystem::ftruncate(const char *path, off_t size, struct fuse_file_info *fi) -> int
 {
   return wrapper([this, size, fi]() {
     return directory->truncate(
       getHandle(fi->fh)->getDirEnt(),
       size);
+  });
+}
+
+auto FileSystem::fsync(const char *path, int isdatasync, struct fuse_file_info *fi) -> int
+{
+  return wrapper([this] {
+    cache->sync();
+    return 0;
   });
 }
 

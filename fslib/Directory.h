@@ -37,7 +37,7 @@ public:
   auto startScan() -> DirPtr;
   auto moveNextFiltered(DirPtr &ptr, uint16_t mask) -> bool;
   auto statfs(struct statvfs *vfs) -> int;
-  auto truncate(const DirEnt &ent, off_t size) -> int;
+  auto truncate(DirEnt &ent, off_t size) -> int;
 
 private:
   int entrySize;

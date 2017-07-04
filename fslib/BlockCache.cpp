@@ -97,4 +97,19 @@ auto BlockCache::resizeBlock(Block *bp, int count) -> void
   bp->resize(count, dataSource);
 }
 
+/**
+ * Write all dirty blocks to disk
+ *
+ * Will throw on I/O problems.
+ */
+auto BlockCache::sync() -> void
+{
+  for (auto &bp : blocks) {
+    if (bp->isDirty()) {
+      bp->write(dataSource);
+    }
+  }
+}
+
+
 }

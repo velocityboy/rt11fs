@@ -7,13 +7,15 @@ namespace RT11FS {
 class File
 {
 public:
-  File(BlockCache *cache, const DirEnt &dirent);
+  File(BlockCache *cache, Directory *dir, const DirEnt &dirent);
 
   auto read(char *buffer, size_t count, off_t offset) -> int;
+  auto write(const char *buffer, size_t count, off_t offset) -> int;
   auto getDirEnt() -> const DirEnt & { return dirent; }
 
 private:
   BlockCache *cache;
+  Directory *dir;
   DirEnt dirent;
 };
 }

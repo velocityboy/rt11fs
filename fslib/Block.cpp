@@ -68,6 +68,21 @@ auto Block::read(DataSource *dataSource) -> void
   dirty = false;
 }
 
+auto Block::write(DataSource *dataSource) -> void
+{
+  auto toSeek = sector * SECTOR_SIZE;
+  auto toWrite = count * SECTOR_SIZE;
+
+  // Data source is defined to return an error if the entire write cannot 
+  // be satisfied
+  int err = dataSource->write(&data[0], toWrite, toSeek);
+  if (err < 0) {
+    throw FilesystemException {err, "could not read block"};
+  }
+
+  dirty = false;
+}
+
 // Copy some data into an external buffer. The caller is
 // responsible for ensuring that all the data can be 
 // provided from this block.
@@ -78,6 +93,17 @@ auto Block::copyOut(int offset, int bytes, char *dest) -> void
   }
 
   memcpy(dest, &data[offset], bytes);
+}
+
+auto Block::copyIn(int offset, int bytes, const char *src) -> void 
+{
+  if (offset + bytes > data.size()) {
+    throw FilesystemException {-EIO, "write past end of block"};
+  }
+
+  memcpy(&data[offset], src, bytes);
+  
+  dirty = true;  
 }
 
 // Copy data around within the block. Safe even if the ranges overlap.

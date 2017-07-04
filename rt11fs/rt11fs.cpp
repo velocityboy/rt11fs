@@ -38,6 +38,11 @@ auto rt11_statfs(const char *path, struct statvfs *vfs) -> int
   return getFS()->statfs(path, vfs);
 }
 
+auto rt11_chmod(const char *path, mode_t mode) -> int
+{
+  return getFS()->chmod(path, mode);
+}
+
 auto rt11_opendir(const char *, struct fuse_file_info *) -> int
 {
   return 0;
@@ -74,6 +79,16 @@ auto rt11_read(const char *path, char *buf, size_t count, off_t offset, struct f
   return getFS()->read(path, buf, count, offset, fi);
 }
 
+auto rt11_write(const char *path, const char *buf, size_t count, off_t offset, struct fuse_file_info *fi)
+{
+  return getFS()->write(path, buf, count, offset, fi); 
+}
+
+auto rt11_fsync(const char *path, int isdatasync, struct fuse_file_info *fi)
+{
+  return getFS()->fsync(path, isdatasync, fi);
+}
+
 auto build_oper(struct fuse_operations *oper)
 {
   add_unimpl(oper);
@@ -81,6 +96,7 @@ auto build_oper(struct fuse_operations *oper)
   oper->getattr = &rt11_getattr;
   oper->fgetattr = &rt11_fgetattr;
   oper->statfs = &rt11_statfs;
+  oper->chmod = &rt11_chmod;
   oper->opendir = &rt11_opendir;
   oper->releasedir = &rt11_releasedir;
   oper->readdir = &rt11_readdir;
@@ -88,6 +104,8 @@ auto build_oper(struct fuse_operations *oper)
   oper->release = &rt11_release;
   oper->ftruncate = &rt11_ftruncate;
   oper->read = &rt11_read;
+  oper->write = &rt11_write;
+  oper->fsync = &rt11_fsync;
 }
 
 auto usage(const string &program)

@@ -17,6 +17,7 @@ public:
   auto extractWord(int offset) -> uint16_t;
 
   auto copyOut(int offset, int bytes, char *dest) -> void;
+  auto copyIn(int offset, int bytes, const char *src) -> void;
   auto copyWithinBlock(int sourceOffset, int destOffset, int count) -> void;
   auto copyFromOtherBlock(Block *source, int sourceOffset, int destOffset, int count) -> void;
 
@@ -27,6 +28,7 @@ public:
   auto getCount() { return count; }
 
   auto read(DataSource *dataSource) -> void;
+  auto write(DataSource *dataSource) -> void;
   auto resize(int newCount, DataSource *dataSource) -> void;
 
   auto addRef() { return ++refcount; }

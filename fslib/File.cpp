@@ -2,15 +2,18 @@
 #include "BlockCache.h"
 #include "File.h"
 
+#include <algorithm>
 #include <iostream>
 
 using std::cerr;
 using std::endl;
+using std::min;
 
 namespace RT11FS {
 
-File::File(BlockCache *cache, const DirEnt &dirent)
+File::File(BlockCache *cache, Directory *dir, const DirEnt &dirent)
   : cache(cache)
+  , dir(dir)
   , dirent(dirent)
 {  
 }
@@ -24,9 +27,45 @@ auto File::read(char *buffer, size_t count, off_t offset) -> int
     auto sector = offset / Block::SECTOR_SIZE;
     auto secoffs = offset % Block::SECTOR_SIZE;
     auto blk = cache->getBlock(dirent.sector0 + sector, 1);
-    auto tocopy = Block::SECTOR_SIZE - secoffs;
+
+    size_t leftInRead = end - offset;
+    size_t leftInBlock = Block::SECTOR_SIZE - secoffs;
+    auto tocopy = min(leftInBlock, leftInRead);
 
     blk->copyOut(secoffs, tocopy, buffer);
+
+    cache->putBlock(blk);
+
+    buffer += tocopy;
+    got += tocopy;
+    offset += tocopy;
+  }
+
+  return got;
+}
+
+auto File::write(const char *buffer, size_t count, off_t offset) -> int
+{
+  auto end = offset + count;
+  auto got = int {0};
+
+  if (end > dirent.length) {
+    auto err = dir->truncate(dirent, end);
+    if (err < 0) {
+      return err;
+    }
+  }
+
+  while (offset < end) {
+    auto sector = offset / Block::SECTOR_SIZE;
+    auto secoffs = offset % Block::SECTOR_SIZE;
+    auto blk = cache->getBlock(dirent.sector0 + sector, 1);
+
+    size_t leftInRead = end - offset;
+    size_t leftInBlock = Block::SECTOR_SIZE - secoffs;
+    auto tocopy = min(leftInBlock, leftInRead);
+
+    blk->copyIn(secoffs, tocopy, buffer);
 
     cache->putBlock(blk);
 
