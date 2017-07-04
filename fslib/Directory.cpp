@@ -366,6 +366,11 @@ auto Directory::growEntry(DirPtr &dirp, int newSize) -> int
     return -ENOSPC;
   }
 
+  auto name = Rad50Name {};
+  name[0] = dirp.getWord(FILENAME_WORDS + 0);
+  name[1] = dirp.getWord(FILENAME_WORDS + 2);
+  name[2] = dirp.getWord(FILENAME_WORDS + 4);
+
   auto inserted = carveFreeBlock(newp, newSize);
   if (inserted < 0) {
     return inserted;
@@ -416,6 +421,9 @@ auto Directory::growEntry(DirPtr &dirp, int newSize) -> int
   dirp.setWord(CREATION_DATE_WORD, 0);
 
   coalesceNeighboringFreeBlocks(dirp);
+
+  // point dirp at whever the original file landed
+  dirp = getDirPointer(name);
 
   return 0;
 }
@@ -695,7 +703,7 @@ auto Directory::carveFreeBlock(DirPtr &dirp, int size) -> int
  *
  * The current block is expected to be a free block itself.
  *
- * @param ptr a free block to comine
+ * @param ptr a free block to combine
  */
 auto Directory::coalesceNeighboringFreeBlocks(DirPtr &ptr) -> void
 {

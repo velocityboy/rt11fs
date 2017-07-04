@@ -330,6 +330,9 @@ TEST_F(DirectoryTest, TruncateShrinkSimple)
 
   EXPECT_EQ(dir.truncate(dirp, 0), 0);
 
+  EXPECT_EQ(dirp.getSegment(), 1);
+  EXPECT_EQ(dirp.getIndex(), 1);
+
   EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
   EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapFilename[0]);
   EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), swapFilename[1]);
@@ -372,6 +375,9 @@ TEST_F(DirectoryTest, TruncateGrowSimple)
   EXPECT_EQ(dirp.getIndex(), 1);
 
   EXPECT_EQ(dir.truncate(dirp, 6 * Block::SECTOR_SIZE), 0);
+
+  EXPECT_EQ(dirp.getSegment(), 1);
+  EXPECT_EQ(dirp.getIndex(), 1);
 
   EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
   EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapFilename[0]);
@@ -416,6 +422,9 @@ TEST_F(DirectoryTest, TruncateGrowSizeRounding)
 
   EXPECT_EQ(dir.truncate(dirp, 5 * Block::SECTOR_SIZE + 1), 0);
 
+  EXPECT_EQ(dirp.getSegment(), 1);
+  EXPECT_EQ(dirp.getIndex(), 1);
+
   EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
   EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapFilename[0]);
   EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), swapFilename[1]);
@@ -459,6 +468,9 @@ TEST_F(DirectoryTest, TruncateShrinkWithInsert)
   auto tailSectors = tailp.getWord(TOTAL_LENGTH_WORD);
 
   EXPECT_EQ(dir.truncate(dirp, 0), 0);
+
+  EXPECT_EQ(dirp.getSegment(), 1);
+  EXPECT_EQ(dirp.getIndex(), 1);
 
   // dirp should point to an entry that just has the length changed
   EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
@@ -540,6 +552,9 @@ TEST_F(DirectoryTest, TruncateGrowWithMove)
   }
 
   EXPECT_EQ(dir.truncate(dirp, 6 * Block::SECTOR_SIZE), 0);
+
+  EXPECT_EQ(dirp.getSegment(), 1);
+  EXPECT_EQ(dirp.getIndex(), 2);
 
   dirp = dir.startScan();
 
@@ -655,6 +670,9 @@ TEST_F(DirectoryTest, TruncateShrinkWithSpill)
 
   EXPECT_EQ(dir.truncate(dirp, 0), 0);
     
+  EXPECT_EQ(dirp.getSegment(), 1);
+  EXPECT_EQ(dirp.getIndex(), 0);
+
   dirp = dir.startScan();
   ++dirp;
 
@@ -749,6 +767,9 @@ TEST_F(DirectoryTest, TruncateShrinkAndDeleteFree)
 
   EXPECT_EQ(dir.truncate(dirp, 6 * Block::SECTOR_SIZE), 0);
 
+  EXPECT_EQ(dirp.getSegment(), 1);
+  EXPECT_EQ(dirp.getIndex(), 1);
+
   // dirp should point to an entry that just has the length changed
   EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
   EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapFilename[0]);
@@ -820,6 +841,9 @@ TEST_F(DirectoryTest, TruncateShrinkAndMergeFree)
   }
 
   EXPECT_EQ(dir.truncate(dirp, 7 * Block::SECTOR_SIZE), 0);
+
+  EXPECT_EQ(dirp.getSegment(), 1);
+  EXPECT_EQ(dirp.getIndex(), 2);
 
   dirp = dir.startScan();
   ++dirp;
@@ -933,6 +957,9 @@ TEST_F(DirectoryTest, TruncateShrinkWithSpillToAllocatedSegment)
   EXPECT_EQ(dirp.getSegmentWord(HIGHEST_SEGMENT), 1);
 
   EXPECT_EQ(dir.truncate(dirp, 0), 0);
+
+  EXPECT_EQ(dirp.getSegment(), 1);
+  EXPECT_EQ(dirp.getIndex(), 0);
     
   dirp = dir.startScan();
   ++dirp;
@@ -1155,6 +1182,9 @@ TEST_F(DirectoryTest, TruncateGrowIntoExactPrecedingSpace)
   auto dirp = dir.getDirPointer(swapFilename);
   EXPECT_EQ(dir.truncate(dirp, 6 * Block::SECTOR_SIZE), 0);
 
+  EXPECT_EQ(dirp.getSegment(), 1);
+  EXPECT_EQ(dirp.getIndex(), 0); 
+
   dirp = dir.startScan();
 
   ++dirp;
@@ -1213,6 +1243,9 @@ TEST_F(DirectoryTest, TruncateGrowIntoLargerPrecedingSpace)
 
   auto dirp = dir.getDirPointer(swapFilename);
   EXPECT_EQ(dir.truncate(dirp, 5 * Block::SECTOR_SIZE), 0);
+
+  EXPECT_EQ(dirp.getSegment(), 1);
+  EXPECT_EQ(dirp.getIndex(), 0);
 
   dirp = dir.startScan();
 
