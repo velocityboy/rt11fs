@@ -266,13 +266,8 @@ auto Directory::statfs(struct statvfs *vfs) -> int
   return 0;
 }
 
-auto Directory::truncate(DirEnt &de, off_t newSize) -> int
+auto Directory::truncate(DirPtr &dirp, off_t newSize) -> int
 {
-  auto dirp = getDirPointer(de.rad50_name);
-  if (dirp.afterEnd()) {
-    return -ENOENT;
-  }
-
   // Express size in sectors
   newSize = (newSize + Block::SECTOR_SIZE - 1) / Block::SECTOR_SIZE;
   auto oldSize = dirp.getWord(TOTAL_LENGTH_WORD);

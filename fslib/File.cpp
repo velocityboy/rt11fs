@@ -50,7 +50,11 @@ auto File::write(const char *buffer, size_t count, off_t offset) -> int
   auto got = int {0};
 
   if (end > dirent.length) {
-    auto err = dir->truncate(dirent, end);
+    auto dirp = dir->getDirPointer(dirent.rad50_name);
+    if (dirp.afterEnd()) {
+      return -ENOENT;
+    }
+    auto err = dir->truncate(dirp, end);
     if (err < 0) {
       return err;
     }
