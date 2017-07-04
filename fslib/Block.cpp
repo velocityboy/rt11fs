@@ -166,6 +166,26 @@ auto Block::copyFromOtherBlock(Block *source, int sourceOffset, int destOffset, 
   dirty = true;
 }
 
+/**
+ * Zero fill part of a block
+ *
+ * Violating the bounds of the block will cause -EIO to be thrown
+ *
+ * @param offset the offset to start filling at.
+ * @param count the number of bytes to fill with zeroes.
+ */
+auto Block::zeroFill(int offset, int count) -> void
+{
+  if (
+    offset < 0 ||
+    offset + count <= 0 ||
+    offset + count > data.size()) {
+    throw FilesystemException {-EIO, "Invalid range for zero filling blocks"};
+  }
+
+  ::memset(&data[offset], 0, count);
+}
+
 // Resize the block to a new number of sectors. If the block is
 // growing, then fill the new space from the file system image.
 auto Block::resize(int newCount, DataSource *dataSource) -> void

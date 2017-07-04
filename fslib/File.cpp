@@ -3,6 +3,7 @@
 #include "File.h"
 
 #include <algorithm>
+#include <cassert>
 #include <iostream>
 
 using std::cerr;
@@ -48,8 +49,9 @@ auto File::write(const char *buffer, size_t count, off_t offset) -> int
 {
   auto end = offset + count;
   auto got = int {0};
+  auto extendFile = end > dirent.length;
 
-  if (end > dirent.length) {
+  if (extendFile) {
     auto dirp = dir->getDirPointer(dirent.rad50_name);
     if (dirp.afterEnd()) {
       return -ENOENT;
@@ -58,6 +60,11 @@ auto File::write(const char *buffer, size_t count, off_t offset) -> int
     if (err < 0) {
       return err;
     }
+
+    // truncate may have moved the file
+    auto success = dir->getEnt(dirp, dirent);
+    assert(success);
+
   }
 
   while (offset < end) {
@@ -70,6 +77,12 @@ auto File::write(const char *buffer, size_t count, off_t offset) -> int
     auto tocopy = min(leftInBlock, leftInRead);
 
     blk->copyIn(secoffs, tocopy, buffer);
+
+    if (extendFile && secoffs + tocopy < Block::SECTOR_SIZE) {
+      // if we're extending the file and this is the last sector, it may have
+      // garbage past the end if the file was moved
+      blk->zeroFill(secoffs + tocopy, Block::SECTOR_SIZE - (secoffs + tocopy));
+    }
 
     cache->putBlock(blk);
 
