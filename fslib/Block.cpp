@@ -184,6 +184,8 @@ auto Block::zeroFill(int offset, int count) -> void
   }
 
   ::memset(&data[offset], 0, count);
+
+  dirty = true;
 }
 
 // Resize the block to a new number of sectors. If the block is
@@ -207,6 +209,8 @@ auto Block::resize(int newCount, DataSource *dataSource) -> void
       throw;
     }
   }
+
+  count = newCount;
 }
 
 }
