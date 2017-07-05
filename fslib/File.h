@@ -11,6 +11,7 @@ public:
 
   auto read(char *buffer, size_t count, off_t offset) -> int;
   auto write(const char *buffer, size_t count, off_t offset) -> int;
+  auto truncate(off_t size) -> int;
   auto getDirEnt() -> const DirEnt & { return dirent; }
 
 private:

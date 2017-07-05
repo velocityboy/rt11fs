@@ -175,14 +175,8 @@ auto FileSystem::write(
 
 auto FileSystem::ftruncate(const char *path, off_t size, struct fuse_file_info *fi) -> int
 {
-  return wrapper([this, size, fi]() {
-    const auto &ent = getHandle(fi->fh)->getDirEnt();
-    auto dirp = directory->getDirPointer(ent.rad50_name);
-    if (dirp.afterEnd()) {
-      return -ENOENT;
-    }
-
-    return directory->truncate(dirp, size);
+  return wrapper([this, size, fi]() {    
+    return getHandle(fi->fh)->truncate(size);
   });
 }
 

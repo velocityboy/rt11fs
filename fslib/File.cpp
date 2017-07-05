@@ -56,6 +56,7 @@ auto File::write(const char *buffer, size_t count, off_t offset) -> int
     if (dirp.afterEnd()) {
       return -ENOENT;
     }
+
     auto err = dir->truncate(dirp, end);
     if (err < 0) {
       return err;
@@ -93,5 +94,23 @@ auto File::write(const char *buffer, size_t count, off_t offset) -> int
 
   return got;
 }
+
+auto File::truncate(off_t size) -> int
+{
+  auto dirp = dir->getDirPointer(dirent.rad50_name);
+  if (dirp.afterEnd()) {
+    return -ENOENT;
+  }
+
+  auto err = dir->truncate(dirp, size);
+  if (err < 0) {
+    return err;
+  }
+
+  dir->getEnt(dirp, dirent);  
+
+  return 0;
+}
+
 
 }
