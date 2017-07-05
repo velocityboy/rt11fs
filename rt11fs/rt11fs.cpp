@@ -16,6 +16,7 @@ namespace {
 struct rt11_config
 {
   char *image;
+  int listdir;
 };
 
 static auto getFS()
@@ -117,6 +118,7 @@ auto usage(const string &program)
 struct fuse_opt rt11_opts[] = 
 {
   { "-i %s", offsetof(struct rt11_config, image), 0 },
+  { "-d",    offsetof(struct rt11_config, listdir), 1},
   FUSE_OPT_END,
 };
 
@@ -149,6 +151,11 @@ auto main(int argc, char *argv[]) -> int
   fuse_opt_add_arg(&args, "-s");
 
   FileSystem fs {config.image};
+
+  if (config.listdir) {
+    fs.lsdir();
+    return 0;
+  }
 
   build_oper(&rt11_oper);
   exitcode = fuse_main(args.argc, args.argv, &rt11_oper, &fs);

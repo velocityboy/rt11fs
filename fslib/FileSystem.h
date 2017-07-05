@@ -39,6 +39,8 @@ public:
   auto ftruncate(const char *path, off_t size, struct fuse_file_info *fi) -> int;
   auto fsync(const char *path, int isdatasync, struct fuse_file_info *fi) -> int;
 
+  // utilities which aren't properly part of the file system
+  auto lsdir() -> void;
 
 private:
   int fd;

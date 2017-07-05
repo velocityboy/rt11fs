@@ -8,15 +8,20 @@
 #include <algorithm>
 #include <cerrno>
 #include <fcntl.h>
+#include <iomanip>
 #include <iostream>
 #include <stdexcept>
 #include <unistd.h>
 
+using std::cout;
 using std::cerr;
 using std::endl;
 using std::find_if;
 using std::make_unique;
+using std::setfill;
+using std::setw;
 using std::string;
+using std::vector;
 
 namespace RT11FS {
 
@@ -247,5 +252,65 @@ auto FileSystem::getHandle(int fh) -> File *
   }
   return files[fh].get();
 }
+
+auto FileSystem::lsdir() -> void
+{
+  auto dirp = directory->startScan();
+
+  cout << "SEG,IDX ---NAME--- LENGTH SECTOR" << endl;
+  while (++dirp) {
+    auto status = dirp.getWord(Dir::STATUS_WORD);
+
+    auto ent = DirEnt {};
+
+    directory->getEnt(dirp, ent);
+    cout << setfill(' ');
+    cout << setw(3) << dirp.getSegment() << "," << setw(3) << dirp.getIndex() << " ";
+    if (dirp.hasStatus(Dir::E_MPTY)) {
+      cout << setw(10) << "<FREE>";
+    } else {
+      cout << setw(10) << ent.name;
+    }
+    cout << " " << setw(6) << ent.length / Block::SECTOR_SIZE;
+    cout << " " << setw(6) << ent.sector0;
+
+    auto date = dirp.getWord(Dir::CREATION_DATE_WORD);
+    if (date == 0) {
+      cout << "     -  -  ";
+    } else {
+      auto age = (date >> 14) & 0x03;
+      auto month = (date >> 9) & 0x0f;
+      auto day = (date >> 4) & 0x1f;
+      auto year = date & 0x1f;
+
+      year += 1972 + 32 * age;
+
+      cout << " " 
+        << setw(4) << year
+        << "-"
+        << setw(2) << setfill('0') << month - 1
+        << "-"
+        << setw(2) << setfill('0') << day;
+    }
+
+    cout << " ";
+    cout << ((status & Dir::E_TENT) ? "TEN" : "   ");
+    cout << " ";
+    cout << ((status & Dir::E_MPTY) ? "MPT" : "   ");
+    cout << " ";
+    cout << ((status & Dir::E_PERM) ? "PRM" : "   ");
+    cout << " ";
+    cout << ((status & Dir::E_EOS) ? "EOS" : "  ");
+    cout << " ";
+    cout << ((status & Dir::E_READ) ? "RDO" : "   ");
+    cout << " ";
+    cout << ((status & Dir::E_PROT) ? "PRT" : "   ");
+    cout << " ";
+    cout << ((status & Dir::E_PRE) ? "PRE" : "   ");
+
+    cout << endl;
+  }
+}
+
 
 }
