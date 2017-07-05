@@ -6,6 +6,15 @@
 
 namespace RT11FS {
 class DataSource;
+
+
+/**
+ * A block of data from the disk.
+ *
+ * A block may contain one more more sectors. A block tracks if it has been changed
+ * (the dirty flag). A block should only be changed by one of the mutators in order
+ * for the dirty flag to be maintained.
+ */
 class Block
 {
 public:
@@ -25,7 +34,14 @@ public:
   auto setByte(int offset, uint8_t value) -> void;
   auto setWord(int offset, uint16_t value) -> void;
 
+  /**
+   * @return the starting sector of the block.
+   */
   auto getSector() { return sector; }
+
+  /**
+   * @return the number of sectors contained in the block.
+   */
   auto getCount() { return count; }
 
   auto read(DataSource *dataSource) -> void;
@@ -35,6 +51,9 @@ public:
   auto addRef() { return ++refcount; }
   auto release() { return --refcount; }
 
+  /**
+   * @return true if the block needs to be written back to disk.
+   */
   auto isDirty() const { return dirty; }
 
 private:
