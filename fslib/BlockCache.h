@@ -9,6 +9,17 @@
 namespace RT11FS {
 class DataSource;
 
+/**
+ * The cache maintains blocks in memory representing data from an underlying
+ * data source. It manages multiple clients wanting access to the data,
+ * and writing the data back to the data source as needed.
+ *
+ * A block represents one or more sectors on the underlying media.
+ *
+ * It is an error for any two blocks in the cache to overlap, as this would
+ * cause the same data on disk to be represented in two different blocks.
+ *
+ */
 class BlockCache {
 public:
   BlockCache(DataSource *dataSource);

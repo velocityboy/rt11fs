@@ -12,6 +12,12 @@ using std::unique_ptr;
 
 namespace RT11FS {
 
+/**
+ * Construct a block cache.
+ *
+ * @param dataSource the data source containing the physical data
+ * storage for the blocks.
+ */
 BlockCache::BlockCache(DataSource *dataSource) 
   : dataSource(dataSource)
 {
@@ -29,8 +35,23 @@ BlockCache::~BlockCache()
 {
 }
 
-// Retrieve a block, reading if needed. A block request may not overlap with any other 
-// existing block.
+/**
+ * Retrieve a block.
+ *
+ * If the block is already in the cache, a pointer to it will be returned; else
+ * the data will be read into a new block.
+ *
+ * Blocks are reference counted; a block will never be evicted from the cache if
+ * it had a non-zero reference count. Each call to `getBlock' must eventually be
+ * balanced by a call to `putBlock' when the caller is done with the block.
+ *
+ * An exception will be raised if the requested block would overlap other block(s)
+ * in the cache, or if there is an I/O error filling the block.
+ *
+ * @param sector the starting sector of the requested block.
+ * @param count the number of sectors to return/
+ * @return a pointer to a block containing the requested data
+ */
 auto BlockCache::getBlock(int sector, int count) -> Block *
 {
   auto cacheIter = begin(blocks);
@@ -66,17 +87,27 @@ auto BlockCache::getBlock(int sector, int count) -> Block *
   return bp;
 }
 
-
-// Release ownership of a block
+/**
+ * Release ownership of a block.
+ */
 auto BlockCache::putBlock(Block *bp) -> void
 {  
   bp->release();
 }
 
-
-// Resize a block to a new number of sectors. If the block grows, it cannot be made to
-// overlap succeeding blocks in the block list. A block may not be downsized to zero or
-// a negative sector count.
+/** 
+ * Resize a block to a new number of sectors. 
+ * 
+ * If the block grows, it cannot be made to overlap succeeding blocks in the 
+ * cache. A block may not be downsized to zero or a negative sector count.
+ * If either of these are requested, an exception will be thrown.
+ *
+ * If the block is grown, then data will be read to fill the new space. If an 
+ * I/O error occurs while this is being done, an exception will thrown.
+ *
+ * @param bp the block to resize.
+ * @param count the new size of the block.
+ */
 auto BlockCache::resizeBlock(Block *bp, int count) -> void
 {
   if (count <= 0) {
@@ -98,7 +129,7 @@ auto BlockCache::resizeBlock(Block *bp, int count) -> void
 }
 
 /**
- * Write all dirty blocks to disk
+ * Write all dirty blocks to disk.
  *
  * Will throw on I/O problems.
  */
