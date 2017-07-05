@@ -266,6 +266,20 @@ auto Directory::statfs(struct statvfs *vfs) -> int
   return 0;
 }
 
+/**
+ * Truncate a directory entry to a new size.
+ *
+ * This call is a bit misnamed for historical reasons. Truncate implies the entry can only shrink,
+ * but this call can also cause it to grow.
+ *
+ * This call can cause entries to move around in the directory, on either a grow or a shrink
+ * operation. On a grow operation, if can also require the movement of data sectors as well.
+ * This is a side effect of the fact that the data sectors of a file in RT-11 are always
+ * contiguous.
+ *
+ * @param dirp the directory entry to change.
+ * @param newSize the new size, in bytes, of the entry.
+ */
 auto Directory::truncate(DirPtr &dirp, off_t newSize) -> int
 {
   // Express size in sectors
@@ -735,7 +749,6 @@ auto Directory::coalesceNeighboringFreeBlocks(DirPtr &ptr) -> void
     deleteEmptyAt(next);
   }
 }
-
 
 /**
  * Compute the maximum number of entries that will fit in one segment.

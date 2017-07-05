@@ -10,6 +10,11 @@ using std::cerr;
 using std::endl;
 using std::min;
 
+// BUGBUG using the filename to find the file each time is both inefficient and 
+// in correct if the file is renamed.
+// BUGBUG Multiple file opens on the same file will be incorrect if an internal truncate
+// moves things around.
+
 namespace RT11FS {
 
 File::File(BlockCache *cache, Directory *dir, const DirEnt &dirent)

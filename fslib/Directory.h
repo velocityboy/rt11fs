@@ -16,6 +16,9 @@ namespace RT11FS {
 class Block;
 class BlockCache;
 
+/**
+ * Represents a directory entry in a form usable by a client
+ */
 struct DirEnt {
   uint16_t status;              /*!< The status word of the entry */
   Dir::Rad50Name rad50_name;    /*!< The file name encoded as Rad50 */
@@ -25,6 +28,9 @@ struct DirEnt {
   time_t create_time;           /*!< The creation time of the file */
 };
 
+/**
+ * Represents the entire directory data structure of a mounted RT-11 volume
+ */
 class Directory
 {
 public:

@@ -6,6 +6,11 @@
 namespace RT11FS {
 class Block;
 
+/**
+ * Represents a pointer to a directory entry, by segment and index.
+ *
+ * Understands how to traverse the directory in either direction.
+ */
 class DirPtr
 {
 public:
