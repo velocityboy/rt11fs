@@ -7,6 +7,7 @@
 #include <cerrno>
 
 using std::string;
+using std::unique_ptr;
 
 namespace RT11FS {
 using namespace Dir;
@@ -88,6 +89,46 @@ auto Directory::getEnt(const std::string &name, DirEnt &ent) -> int
   auto dirp = getDirPointer(rad50Name);
 
   return getEnt(dirp, ent) ? 0 : -ENOENT;
+}
+
+/** 
+ * Retrieve the directory entry for a named file
+ *
+ * Scans the directory looking for the named file and returns a pointer to it.
+ * Will return entries for any object other than end of segment or free space 
+ * (such as temporary entries.)
+ * 
+ * @param name the name of the file to search for.
+ * @param dirp on success, the directory pointer for `name'.
+ * @return 0 on success or a negated errno.
+ * @retval -EINVAL if the filename cannot be parsed
+ * @retval -ENOENT if the filename is not found in the directory
+ */
+auto Directory::getDirPointer(const std::string &name, unique_ptr<DirPtr> &dirpp) -> int
+{
+  auto rad50Name = Rad50Name {};
+  if (!parseFilename(name, rad50Name)) {
+    return -EINVAL;
+  }
+
+  auto dirp = startScan();
+
+  while (++dirp) {
+    if (dirp.hasStatus(E_MPTY) || dirp.hasStatus(E_EOS)) {
+      continue;
+    }
+
+    if (
+      rad50Name[0] == dirp.getWord(FILENAME_WORDS) &&
+      rad50Name[1] == dirp.getWord(FILENAME_WORDS + 2) &&
+      rad50Name[2] == dirp.getWord(FILENAME_WORDS + 4)
+    ) {
+      dirpp.reset(new DirPtr {dirp});
+      return 0;
+    }
+  }
+
+  return -ENOENT;
 }
 
 /** 

@@ -3,11 +3,11 @@ add_library (fslib
   BlockCache.cpp
   Directory.cpp
   DirPtr.cpp
-  File.cpp
   FileDataSource.cpp
   FileSystem.cpp
   LogUnimpl.cpp
   MemoryDataSource.cpp
+  OpenFileTable.cpp
   Rad50.cpp
 )
 

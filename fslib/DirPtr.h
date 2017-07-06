@@ -14,6 +14,7 @@ class Block;
 class DirPtr
 {
 public:
+  DirPtr();
   DirPtr(Block *dirblk);
 
   auto beforeStart() const { return segment == -1; }

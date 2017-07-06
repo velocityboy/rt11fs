@@ -1,9 +1,9 @@
 #include "BlockCache.h"
 #include "Directory.h"
-#include "File.h"
 #include "FileDataSource.h"
 #include "FileSystem.h"
 #include "FileSystemException.h"
+#include "OpenFileTable.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -37,6 +37,7 @@ FileSystem::FileSystem(const string &name)
 
   cache = make_unique<BlockCache>(dataSource.get());
   directory = make_unique<Directory>(cache.get());
+  oft = make_unique<OpenFileTable>(directory.get(), cache.get());
 }
 
 FileSystem::~FileSystem()
@@ -58,22 +59,29 @@ auto FileSystem::getattr(const char *path, struct stat *stbuf) -> int
       return 0;
     }
 
-    auto ent = DirEnt {};
-    auto err = getDirEnt(p, ent);
-
-    if (err == 0) {
-      uint16_t perm = 0444;
-      if ((ent.status & Dir::E_READ) == 0) {
-        perm |= 0222;
-      }
-
-      stbuf->st_mode = S_IFREG | perm;
-      stbuf->st_nlink = 1;
-      stbuf->st_size = ent.length;
-      stbuf->st_mtime = ent.create_time;
+    auto parsedPath = string {path};
+    auto err = validatePath(parsedPath);
+    if (err < 0) {
+      return err;
     }
 
-    return err;
+    auto ent = DirEnt {};
+    err = directory->getEnt(parsedPath, ent);
+    if (err < 0) {
+      return err;
+    }
+
+    uint16_t perm = 0444;
+    if ((ent.status & Dir::E_READ) == 0) {
+      perm |= 0222;
+    }
+
+    stbuf->st_mode = S_IFREG | perm;
+    stbuf->st_nlink = 1;
+    stbuf->st_size = ent.length;
+    stbuf->st_mtime = ent.create_time;
+
+    return 0;
   });
 }
 
@@ -130,16 +138,18 @@ auto FileSystem::readdir(
 auto FileSystem::open(const char *path, struct fuse_file_info *fi) -> int
 {
   return wrapper([this, path, fi]() {
-    auto ent = DirEnt {};
-    auto err = getDirEnt(path, ent);
+    auto parsedPath = string {path};
+    auto err = validatePath(parsedPath);
     if (err < 0) {
       return err;
     }
 
-    auto fh = getEmptyFileSlot();
-    files[fh] = move(make_unique<File>(cache.get(), directory.get(), ent));
+    auto fd = oft->openFile(parsedPath);
+    if (fd < 0) {
+      return fd;
+    }
 
-    fi->fh = fh;
+    fi->fh = fd;
 
     return 0;
   });
@@ -148,9 +158,7 @@ auto FileSystem::open(const char *path, struct fuse_file_info *fi) -> int
 auto FileSystem::release(const char *path, struct fuse_file_info *fi) -> int
 {
   return wrapper([this, fi]() {
-    getHandle(fi->fh);
-    files[fi->fh].reset();
-    return 0;
+    return oft->closeFile(fi->fh);
   });
 }
 
@@ -160,7 +168,7 @@ auto FileSystem::read(
   struct fuse_file_info *fi) -> int 
 {
   return wrapper([this, path, buf, count, offset, fi] {
-    return getHandle(fi->fh)->read(buf, count, offset);
+    return oft->readFile(fi->fh, buf, count, offset);
   });
 }
 
@@ -169,14 +177,14 @@ auto FileSystem::write(
   struct fuse_file_info *fi) -> int
 {
   return wrapper([this, path, buf, count, offset, fi] {
-    return getHandle(fi->fh)->write(buf, count, offset);
+    return oft->writeFile(fi->fh, buf, count, offset);
   });
 }
 
 auto FileSystem::ftruncate(const char *path, off_t size, struct fuse_file_info *fi) -> int
 {
   return wrapper([this, size, fi]() {    
-    return getHandle(fi->fh)->truncate(size);
+    return oft->truncate(fi->fh, size);
   });
 }
 
@@ -208,7 +216,7 @@ auto FileSystem::wrapper(std::function<int(void)> fn) -> int
   return err;
 }
 
-auto FileSystem::getDirEnt(const string &path, DirEnt &de) -> int
+auto FileSystem::validatePath(string &path) -> int
 {
   if (path == "" || path[0] != '/') {
     return -EINVAL;
@@ -222,29 +230,8 @@ auto FileSystem::getDirEnt(const string &path, DirEnt &de) -> int
     return -ENOENT;    
   }
 
-  return directory->getEnt(path.substr(1), de);
-}
-
-auto FileSystem::getEmptyFileSlot() -> int
-{
-  auto fileIter = find_if(begin(files), end(files), [](const auto &slot) { 
-    return slot == nullptr; 
-  });
-
-  if (fileIter != end(files)) {
-    return fileIter - begin(files);
-  }
-
-  files.push_back(nullptr);
-  return files.size() - 1;
-}
-
-auto FileSystem::getHandle(int fh) -> File *
-{
-  if (fh < 0 || fh >= files.size() || files[fh] == nullptr) {
-    throw FilesystemException {-EBADF, "Invalid file handle"};
-  }
-  return files[fh].get();
+  path = path.substr(1);
+  return 0;
 }
 
 auto FileSystem::lsdir() -> void

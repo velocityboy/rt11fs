@@ -38,6 +38,7 @@ public:
   ~Directory();
 
   auto getEnt(const std::string &name, DirEnt &ent) -> int;
+  auto getDirPointer(const std::string &name, std::unique_ptr<DirPtr> &dirpp) -> int;
   auto getDirPointer(const Dir::Rad50Name &name) -> DirPtr;
   auto getEnt(const DirPtr &ptr, DirEnt &ent) -> bool;
   auto startScan() -> DirPtr;

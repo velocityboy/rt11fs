@@ -14,6 +14,7 @@ class DataSource;
 class Directory;
 struct DirEnt;
 class File;
+class OpenFileTable;
 
 class FileSystem
 {
@@ -47,12 +48,10 @@ private:
   std::unique_ptr<DataSource> dataSource;
   std::unique_ptr<BlockCache> cache;
   std::unique_ptr<Directory> directory;
-  std::vector<std::unique_ptr<File>> files;
+  std::unique_ptr<OpenFileTable> oft;
 
   static auto wrapper(std::function<int(void)> fn) -> int;
-  auto getDirEnt(const std::string &path, DirEnt &de) -> int;
-  auto getEmptyFileSlot() -> int;
-  auto getHandle(int fh) -> File *;
+  auto validatePath(std::string &path) -> int;
 }; 
 
 };
