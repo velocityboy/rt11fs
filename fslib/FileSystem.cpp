@@ -54,7 +54,7 @@ auto FileSystem::getattr(const char *path, struct stat *stbuf) -> int
     auto p = string {path};
 
     if (p == "/") {
-      stbuf->st_mode = S_IFDIR | 0755;
+      stbuf->st_mode = S_IFDIR | 0777;
       stbuf->st_nlink = 3;
       return 0;
     }
