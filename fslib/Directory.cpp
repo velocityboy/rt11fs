@@ -8,6 +8,7 @@
 
 using std::string;
 using std::unique_ptr;
+using std::vector;
 
 namespace RT11FS {
 using namespace Dir;
@@ -320,9 +321,13 @@ auto Directory::statfs(struct statvfs *vfs) -> int
  *
  * @param dirp the directory entry to change.
  * @param newSize the new size, in bytes, of the entry.
+ * @param moves a vector which will, on success, how file entries were moved 
+ * @return 0 on success or a negated errno
  */
-auto Directory::truncate(DirPtr &dirp, off_t newSize) -> int
+auto Directory::truncate(DirPtr &dirp, off_t newSize, vector<DirChangeTracker::Entry> &moves) -> int
 {
+  auto tracker = DirChangeTracker {};
+
   // Express size in sectors
   newSize = (newSize + Block::SECTOR_SIZE - 1) / Block::SECTOR_SIZE;
   auto oldSize = dirp.getWord(TOTAL_LENGTH_WORD);
@@ -331,11 +336,24 @@ auto Directory::truncate(DirPtr &dirp, off_t newSize) -> int
     return 0;
   }
 
+  auto err = 0;
   if (newSize < oldSize) {
-    return shrinkEntry(dirp, newSize);
-  } 
+    err = shrinkEntry(dirp, newSize, tracker);
+  } else {
+    err = growEntry(dirp, newSize, tracker);
+  }
 
-  return growEntry(dirp, newSize);
+  if (err < 0) {
+    return err;
+  }
+
+  moves.clear();
+
+  auto gotMoves = tracker.getMoves();
+
+  copy(begin(gotMoves), end(gotMoves), back_inserter(moves));
+
+  return 0;
 }
 
 /**
@@ -350,18 +368,19 @@ auto Directory::truncate(DirPtr &dirp, off_t newSize) -> int
  *
  * @param dirp points to the entry to shrink.
  * @param newSize the new size of the entry, in sectors.
+ * @param tracker a tracker to log entry movement.
  * @return 0 on success or a negated errno (most commonly if
  * the entire directory is full.)
  * 
  */
-auto Directory::shrinkEntry(DirPtr &dirp, int newSize) -> int
+auto Directory::shrinkEntry(DirPtr &dirp, int newSize, DirChangeTracker &tracker) -> int
 {
   auto nextp = dirp.next();
 
   if (!nextp.hasStatus(E_MPTY)) {
     // if this succeeds, then nextp will point to a zero-sector
     // empty entry in the same location.
-    auto err = insertEmptyAt(nextp);
+    auto err = insertEmptyAt(nextp, tracker);
     if (err) {
       // if we can't insert an empty entry, can't continue.
       return err;
@@ -389,11 +408,12 @@ auto Directory::shrinkEntry(DirPtr &dirp, int newSize) -> int
  *
  * @param dirp points to the entry to grow.
  * @param newSize the new size of the entry, in sectors.
+ * @param tracker a tracker to log entry movement.
  * @return 0 on success or a negated errno (most commonly if
  * the entire directory is full.)
  * 
  */
-auto Directory::growEntry(DirPtr &dirp, int newSize) -> int
+auto Directory::growEntry(DirPtr &dirp, int newSize, DirChangeTracker &tracker) -> int
 {
   auto next = dirp.next();
   if (next.hasStatus(E_MPTY)) {
@@ -407,7 +427,7 @@ auto Directory::growEntry(DirPtr &dirp, int newSize) -> int
 
       if (next.getWord(TOTAL_LENGTH_WORD) == 0) {
         // delete empty free space entry
-        deleteEmptyAt(next);
+        deleteEmptyAt(next, tracker);
       }
 
       return 0;
@@ -426,7 +446,7 @@ auto Directory::growEntry(DirPtr &dirp, int newSize) -> int
   name[1] = dirp.getWord(FILENAME_WORDS + 2);
   name[2] = dirp.getWord(FILENAME_WORDS + 4);
 
-  auto inserted = carveFreeBlock(newp, newSize);
+  auto inserted = carveFreeBlock(newp, newSize, tracker);
   if (inserted < 0) {
     return inserted;
   }
@@ -460,9 +480,7 @@ auto Directory::growEntry(DirPtr &dirp, int newSize) -> int
     cache->putBlock(dstBlk);
   }
 
-  src = dirp.offset(0);
-  dst = newp.offset(0);
-  dirblk->copyWithinBlock(src, dst, entrySize);
+  moveEntryAcrossSegments(dirp, newp, tracker);
 
   // we just wrote over the new entry with the old size; put it back    
   newp.setWord(TOTAL_LENGTH_WORD, newSize);
@@ -475,7 +493,7 @@ auto Directory::growEntry(DirPtr &dirp, int newSize) -> int
   dirp.setByte(CHANNEL_BYTE, 0);
   dirp.setWord(CREATION_DATE_WORD, 0);
 
-  coalesceNeighboringFreeBlocks(dirp);
+  coalesceNeighboringFreeBlocks(dirp, tracker);
 
   // point dirp at whever the original file landed
   dirp = getDirPointer(name);
@@ -493,14 +511,15 @@ auto Directory::growEntry(DirPtr &dirp, int newSize) -> int
  * 
  * @param dirp a pointer to the entry that will be free space 
  * upon success.
+ * @param tracker a tracker to record entry movement
  * @return 0 on success or a negative errno
  */
-auto Directory::insertEmptyAt(DirPtr &dirp) -> int
+auto Directory::insertEmptyAt(DirPtr &dirp, DirChangeTracker &tracker) -> int
 {
   auto eos = advanceToEndOfSegment(dirp);
 
   if (eos.getIndex() >= maxEntriesPerSegment() - 1) {
-    auto err = spillLastEntry(dirp);
+    auto err = spillLastEntry(dirp, tracker);
     if (err) {
       return err;
     }
@@ -513,10 +532,10 @@ auto Directory::insertEmptyAt(DirPtr &dirp) -> int
 
   // at this point we know it's safe to move everything down by
   // one entry
-  auto src = dirp.offset(0);
-  auto dst = src + entrySize;
-  auto cnt = eos.offset(0) - src + entrySize;
-  dirblk->copyWithinBlock(src, dst, cnt);
+  auto destp = dirp;
+  destp.incIndex();   // don't let this go to next segment if we're right on EOS
+  auto cnt = eos.getIndex() - dirp.getIndex() + 1;
+  moveEntriesWithinSegment(dirp, destp, cnt, tracker);
 
   // the contents of dirp have been moved, so we can 
   // now fill dirp with the empty free entry
@@ -542,18 +561,19 @@ auto Directory::insertEmptyAt(DirPtr &dirp) -> int
  * 
  * @param dirp a pointer to the entry that will be free space 
  * upon success.
+ * @param tracker a tracker to log entry movement.
  * @return 0 on success or a negative errno
  */
-auto Directory::deleteEmptyAt(DirPtr &dirp) -> void
+auto Directory::deleteEmptyAt(DirPtr &dirp, DirChangeTracker &tracker) -> void
 {
   assert(dirp.getWord(TOTAL_LENGTH_WORD) == 0);
 
   auto eos = advanceToEndOfSegment(dirp);
 
-  auto dst = dirp.offset(0);
-  auto src = dst + entrySize;
-  auto cnt = eos.offset(0) - src + entrySize;
-  dirblk->copyWithinBlock(src, dst, cnt);
+  auto srcp = dirp;
+  srcp.incIndex();
+  auto cnt = eos.getIndex() - srcp.getIndex() + 1;
+  moveEntriesWithinSegment(srcp, dirp, cnt, tracker);
 }
 
 /**
@@ -569,9 +589,10 @@ auto Directory::deleteEmptyAt(DirPtr &dirp) -> void
  * then the operation will fail.
  *
  * @param dirp points to the segment to move the last entry out of
+ * @param tracker a tracker to log entry moves
  * @return 0 on success or a negated errno
  */
-auto Directory::spillLastEntry(const DirPtr &dirp) -> int
+auto Directory::spillLastEntry(const DirPtr &dirp, DirChangeTracker &tracker) -> int
 {
   auto eos = advanceToEndOfSegment(dirp);
 
@@ -598,7 +619,7 @@ auto Directory::spillLastEntry(const DirPtr &dirp) -> int
   assert(last.getDataSector() + last.getWord(TOTAL_LENGTH_WORD) == next.getDataSector());
 
   // this will take care of recusively spilling if next's segment is full  
-  auto err = insertEmptyAt(next);
+  auto err = insertEmptyAt(next, tracker);
   if (err) {
     return err;
   }
@@ -608,10 +629,7 @@ auto Directory::spillLastEntry(const DirPtr &dirp) -> int
   assert(next.getIndex() == 0);
 
   // move last entry to next segment
-  dirblk->copyWithinBlock(
-    last.offset(0),
-    next.offset(0),
-    entrySize);
+  moveEntryAcrossSegments(last, next, tracker);
 
   next.setSegmentWord(SEGMENT_DATA_BLOCK, last.getDataSector());
 
@@ -727,9 +745,10 @@ auto Directory::findLargestFreeBlock() -> DirPtr
  *
  * @param dirp the free block to split
  * @param size the new size in sectors of `dirp'
+ * @param tracker a tracker to log entry movement
  * @return the number of blocks inserted (>= 0) or a negated errno
  */
-auto Directory::carveFreeBlock(DirPtr &dirp, int size) -> int
+auto Directory::carveFreeBlock(DirPtr &dirp, int size, DirChangeTracker &tracker) -> int
 {
   if (size > dirp.getWord(TOTAL_LENGTH_WORD)) {
     return -EINVAL;
@@ -738,7 +757,7 @@ auto Directory::carveFreeBlock(DirPtr &dirp, int size) -> int
   // if the new block is larger than we need, carve it up
   if (size < dirp.getWord(TOTAL_LENGTH_WORD)) {
     auto next = dirp.next();
-    auto err = insertEmptyAt(next);
+    auto err = insertEmptyAt(next, tracker);
     if (err) {
       return err;
     }
@@ -759,8 +778,9 @@ auto Directory::carveFreeBlock(DirPtr &dirp, int size) -> int
  * The current block is expected to be a free block itself.
  *
  * @param ptr a free block to combine
+ * @param tracker a tracker to log entry movement
  */
-auto Directory::coalesceNeighboringFreeBlocks(DirPtr &ptr) -> void
+auto Directory::coalesceNeighboringFreeBlocks(DirPtr &ptr, DirChangeTracker &tracker) -> void
 {
   if (!ptr.hasStatus(E_MPTY)) {
     return;
@@ -787,7 +807,7 @@ auto Directory::coalesceNeighboringFreeBlocks(DirPtr &ptr) -> void
     first.setWord(TOTAL_LENGTH_WORD, len);
     next.setWord(TOTAL_LENGTH_WORD, 0);
 
-    deleteEmptyAt(next);
+    deleteEmptyAt(next, tracker);
   }
 }
 
@@ -822,6 +842,56 @@ auto Directory::advanceToEndOfSegment(const DirPtr &dirp) -> DirPtr
   }
 
   return eos;
+}
+
+/**
+ * Move directory entries around in one segment.
+ *
+ * All entries in the source and destination ranges must fit in one segemnt.
+ * This routine will not spill into the next segment.
+ * 
+ * @param segment the segment to reorder.
+ * @param sourceIdx the first entry in the source range.
+ * @param destIdx the first entry in the destination range.
+ * @param count the number of entries to move.
+ */
+auto Directory::moveEntriesWithinSegment(const DirPtr &src, const DirPtr &dst, int count, DirChangeTracker &tracker) -> void
+{
+  assert(src.getSegment() == dst.getSegment());
+  assert(count > 0 && count <= maxEntriesPerSegment());
+  assert(src.getIndex() + count <= maxEntriesPerSegment());
+  assert(dst.getIndex() + count <= maxEntriesPerSegment());
+
+  tracker.beginTransaction();
+  auto s = src;
+  auto d = dst;
+  for (auto c = count; c--; s++, d++) {
+    tracker.moveDirEntry(s, d);
+  }
+  tracker.endTransaction();
+
+  auto srcOffset = src.offset(0);
+  auto dstOffset = dst.offset(0);
+
+  dirblk->copyWithinBlock(srcOffset, dstOffset, count * entrySize);
+}
+
+/**
+ * Move one directory entry. May move between segments.
+ *  
+ * @param src the source entry.
+ * @param dst the slot to move the entry to.
+ */
+auto Directory::moveEntryAcrossSegments(const DirPtr &src, const DirPtr &dst, DirChangeTracker &tracker) -> void
+{
+  auto srcOffset = src.offset(0);
+  auto dstOffset = dst.offset(0);
+
+  tracker.beginTransaction();
+  tracker.moveDirEntry(src, dst);
+  tracker.endTransaction();
+
+  dirblk->copyWithinBlock(srcOffset, dstOffset, entrySize);
 }
 
 /**

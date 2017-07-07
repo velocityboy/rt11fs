@@ -1,6 +1,7 @@
 #ifndef __DIRECTORY_H_
 #define __DIRECTORY_H_
 
+#include "DirChangeTracker.h"
 #include "DirConst.h"
 #include "DirPtr.h"
 
@@ -44,26 +45,29 @@ public:
   auto startScan() -> DirPtr;
   auto moveNextFiltered(DirPtr &ptr, uint16_t mask) -> bool;
   auto statfs(struct statvfs *vfs) -> int;
-  auto truncate(DirPtr &dirp, off_t size) -> int;
+  auto truncate(DirPtr &dirp, off_t size, std::vector<DirChangeTracker::Entry> &moves) -> int;
 
 private:
   int entrySize;
   BlockCache *cache;
   Block *dirblk;
 
-  auto shrinkEntry(DirPtr &dirp, int newSize) -> int;
-  auto growEntry(DirPtr &dirp, int newSize) -> int;
+  auto shrinkEntry(DirPtr &dirp, int newSize, DirChangeTracker &tracker) -> int;
+  auto growEntry(DirPtr &dirp, int newSize, DirChangeTracker &tracker) -> int;
 
-  auto insertEmptyAt(DirPtr &dirp) -> int;
-  auto deleteEmptyAt(DirPtr &dirp) -> void;
-  auto spillLastEntry(const DirPtr &dirp) -> int;
+  auto insertEmptyAt(DirPtr &dirp, DirChangeTracker &tracker) -> int;
+  auto deleteEmptyAt(DirPtr &dirp, DirChangeTracker &tracker) -> void;
+  auto spillLastEntry(const DirPtr &dirp, DirChangeTracker &tracker) -> int;
   auto allocateNewSegment() -> int;
   auto findLargestFreeBlock() -> DirPtr;
-  auto carveFreeBlock(DirPtr &dirp, int size) -> int;
-  auto coalesceNeighboringFreeBlocks(DirPtr &ptr) -> void;
+  auto carveFreeBlock(DirPtr &dirp, int size, DirChangeTracker &tracker) -> int;
+  auto coalesceNeighboringFreeBlocks(DirPtr &ptr, DirChangeTracker &tracker) -> void;
 
   auto maxEntriesPerSegment() const -> int;
   auto advanceToEndOfSegment(const DirPtr &dirp) -> DirPtr;
+
+  auto moveEntriesWithinSegment(const DirPtr &src, const DirPtr &dst, int count, DirChangeTracker &tracker) -> void;
+  auto moveEntryAcrossSegments(const DirPtr &src, const DirPtr &dst, DirChangeTracker &tracker) -> void;
 
   static auto parseFilename(const std::string &name, Dir::Rad50Name &rad50) -> bool;
 };

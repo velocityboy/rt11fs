@@ -1,5 +1,6 @@
 #include "Block.h"
 #include "BlockCache.h"
+#include "DirChangeTracker.h"
 #include "DirConst.h"
 #include "Directory.h"
 #include "DirectoryBuilder.h"
@@ -12,6 +13,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <unistd.h>
@@ -21,7 +23,10 @@ using namespace RT11FS;
 using namespace RT11FS::Dir;
 
 using std::array;
+using std::cerr;
 using std::copy;
+using std::endl;
+using std::find_if;
 using std::out_of_range;
 using std::make_unique;
 using std::vector;
@@ -44,6 +49,38 @@ protected:
   static auto segmentsPerEntry(int extraBytes = 0) 
   {
     return (SECTORS_PER_SEGMENT * Block::SECTOR_SIZE - FIRST_ENTRY_OFFSET) / (ENTRY_LENGTH + extraBytes);
+  }
+
+  static auto expectAndRemove(
+    vector<DirChangeTracker::Entry> &moves,
+    int oldSegment,
+    int oldIndex,
+    int newSegment,
+    int newIndex
+  )
+  {
+    auto iter = find_if(
+      begin(moves), 
+      end(moves), 
+      [oldSegment, oldIndex, newSegment, newIndex] (const auto &e) {
+        return 
+          e.oldSegment == oldSegment &&
+          e.oldIndex == oldIndex &&
+          e.newSegment == newSegment &&
+          e.newIndex == newIndex;
+    });
+
+    EXPECT_NE(iter, end(moves));
+    if (iter != end(moves)) {
+      moves.erase(iter);
+    }
+  }
+
+  static auto dumpMoves(const vector<DirChangeTracker::Entry> &moves) 
+  {
+    for (const auto &move : moves) {
+      cerr << move.oldSegment << ":" << move.oldIndex << " => " << move.newSegment << ":" << move.newIndex << endl;
+    }
   }
 
   std::unique_ptr<MemoryDataSource> dataSource;
@@ -328,7 +365,9 @@ TEST_F(DirectoryTest, TruncateShrinkSimple)
 
   EXPECT_EQ(dirp.getIndex(), 1);
 
-  EXPECT_EQ(dir.truncate(dirp, 0), 0);
+  auto moves = vector<DirChangeTracker::Entry> {};
+  EXPECT_EQ(dir.truncate(dirp, 0, moves), 0);
+  EXPECT_TRUE(moves.empty());
 
   EXPECT_EQ(dirp.getSegment(), 1);
   EXPECT_EQ(dirp.getIndex(), 1);
@@ -374,7 +413,9 @@ TEST_F(DirectoryTest, TruncateGrowSimple)
 
   EXPECT_EQ(dirp.getIndex(), 1);
 
-  EXPECT_EQ(dir.truncate(dirp, 6 * Block::SECTOR_SIZE), 0);
+  auto moves = vector<DirChangeTracker::Entry> {};
+  EXPECT_EQ(dir.truncate(dirp, 6 * Block::SECTOR_SIZE, moves), 0);
+  EXPECT_TRUE(moves.empty());
 
   EXPECT_EQ(dirp.getSegment(), 1);
   EXPECT_EQ(dirp.getIndex(), 1);
@@ -420,7 +461,9 @@ TEST_F(DirectoryTest, TruncateGrowSizeRounding)
 
   EXPECT_EQ(dirp.getIndex(), 1);
 
-  EXPECT_EQ(dir.truncate(dirp, 5 * Block::SECTOR_SIZE + 1), 0);
+  auto moves = vector<DirChangeTracker::Entry> {};
+  EXPECT_EQ(dir.truncate(dirp, 5 * Block::SECTOR_SIZE + 1, moves), 0);
+  EXPECT_TRUE(moves.empty());
 
   EXPECT_EQ(dirp.getSegment(), 1);
   EXPECT_EQ(dirp.getIndex(), 1);
@@ -467,10 +510,10 @@ TEST_F(DirectoryTest, TruncateShrinkWithInsert)
   auto tailp = nextp.next();
   auto tailSectors = tailp.getWord(TOTAL_LENGTH_WORD);
 
-  EXPECT_EQ(dir.truncate(dirp, 0), 0);
-
-  EXPECT_EQ(dirp.getSegment(), 1);
-  EXPECT_EQ(dirp.getIndex(), 1);
+  auto moves = vector<DirChangeTracker::Entry> {};
+  EXPECT_EQ(dir.truncate(dirp, 0, moves), 0);
+  expectAndRemove(moves, 1, 2, 1, 3); 
+  EXPECT_TRUE(moves.empty());
 
   // dirp should point to an entry that just has the length changed
   EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
@@ -523,12 +566,12 @@ TEST_F(DirectoryTest, TruncateGrowWithMove)
   using Ent = DirectoryBuilder::DirEntry;
   vector<vector<Ent>> dirdata = {
     {
-      Ent {E_MPTY, 2 },
-      Ent {E_PERM, 3, swapFilename },
-      Ent {E_PERM, 5, Rad50Name {1, 2, 3}},      
+      Ent {E_MPTY, 2 },                             // 1:0  E_EMPTY 5
+      Ent {E_PERM, 3, swapFilename },               // 1:1  1,2,3
+      Ent {E_PERM, 5, Rad50Name {1, 2, 3}},         // 1:2  swap file
       // swap file will move here
-      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA},
-      Ent {E_EOS}
+      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA}, // 1:3  rest of data
+      Ent {E_EOS}                                   // 1:4  eos
     },
   };
 
@@ -551,7 +594,11 @@ TEST_F(DirectoryTest, TruncateGrowWithMove)
     blockCache->putBlock(block);
   }
 
-  EXPECT_EQ(dir.truncate(dirp, 6 * Block::SECTOR_SIZE), 0);
+  auto moves = vector<DirChangeTracker::Entry> {};
+  EXPECT_EQ(dir.truncate(dirp, 6 * Block::SECTOR_SIZE, moves), 0);
+  expectAndRemove(moves, 1, 1, 1, 2);
+  expectAndRemove(moves, 1, 2, 1, 1);
+  EXPECT_TRUE(moves.empty());
 
   EXPECT_EQ(dirp.getSegment(), 1);
   EXPECT_EQ(dirp.getIndex(), 2);
@@ -668,7 +715,13 @@ TEST_F(DirectoryTest, TruncateShrinkWithSpill)
 
   dirp = dir.getDirPointer(swapFilename);
 
-  EXPECT_EQ(dir.truncate(dirp, 0), 0);
+  auto moves = vector<DirChangeTracker::Entry> {};
+  EXPECT_EQ(dir.truncate(dirp, 0, moves), 0);
+  for (auto i = 1; i < entries - 2; i++) {
+    expectAndRemove(moves, 1, i, 1, i + 1);
+  }
+  expectAndRemove(moves, 1, entries - 2, 2, 0);
+  EXPECT_TRUE(moves.empty());
     
   EXPECT_EQ(dirp.getSegment(), 1);
   EXPECT_EQ(dirp.getIndex(), 0);
@@ -765,10 +818,10 @@ TEST_F(DirectoryTest, TruncateShrinkAndDeleteFree)
   auto tailp = nextp.next();
   auto tailSectors = tailp.getWord(TOTAL_LENGTH_WORD);
 
-  EXPECT_EQ(dir.truncate(dirp, 6 * Block::SECTOR_SIZE), 0);
-
-  EXPECT_EQ(dirp.getSegment(), 1);
-  EXPECT_EQ(dirp.getIndex(), 1);
+  auto moves = vector<DirChangeTracker::Entry> {};
+  EXPECT_EQ(dir.truncate(dirp, 6 * Block::SECTOR_SIZE, moves), 0);
+  expectAndRemove(moves, 1, 3, 1, 2);
+  EXPECT_TRUE(moves.empty());
 
   // dirp should point to an entry that just has the length changed
   EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
@@ -814,7 +867,7 @@ TEST_F(DirectoryTest, TruncateShrinkAndMergeFree)
   vector<vector<Ent>> dirdata = {
     {
       Ent {E_MPTY, 2},
-      Ent {E_PERM, 3, swapFilename},  // we will grow this to 6 and subsume the following free entry
+      Ent {E_PERM, 3, swapFilename},  
       Ent {E_MPTY, 3},      
       Ent {E_PERM, 5, Rad50Name {1, 2, 3}},      
       Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA},
@@ -840,10 +893,11 @@ TEST_F(DirectoryTest, TruncateShrinkAndMergeFree)
     blockCache->putBlock(block);
   }
 
-  EXPECT_EQ(dir.truncate(dirp, 7 * Block::SECTOR_SIZE), 0);
-
-  EXPECT_EQ(dirp.getSegment(), 1);
-  EXPECT_EQ(dirp.getIndex(), 2);
+  auto moves = vector<DirChangeTracker::Entry> {};
+  EXPECT_EQ(dir.truncate(dirp, 7 * Block::SECTOR_SIZE, moves), 0);
+  expectAndRemove(moves, 1, 3, 1, 1);
+  expectAndRemove(moves, 1, 1, 1, 2);
+  EXPECT_TRUE(moves.empty());
 
   dirp = dir.startScan();
   ++dirp;
@@ -956,10 +1010,13 @@ TEST_F(DirectoryTest, TruncateShrinkWithSpillToAllocatedSegment)
   EXPECT_EQ(dirp.getSegmentWord(NEXT_SEGMENT), 0);
   EXPECT_EQ(dirp.getSegmentWord(HIGHEST_SEGMENT), 1);
 
-  EXPECT_EQ(dir.truncate(dirp, 0), 0);
-
-  EXPECT_EQ(dirp.getSegment(), 1);
-  EXPECT_EQ(dirp.getIndex(), 0);
+  auto moves = vector<DirChangeTracker::Entry> {};
+  EXPECT_EQ(dir.truncate(dirp, 0, moves), 0);
+  for (auto i = 1; i < entries - 2; i++) {
+    expectAndRemove(moves, 1, i, 1, i + 1);
+  }
+  expectAndRemove(moves, 1, entries - 2, 2, 0);
+  EXPECT_TRUE(moves.empty());
     
   dirp = dir.startScan();
   ++dirp;
@@ -1064,7 +1121,9 @@ TEST_F(DirectoryTest, TruncateShrinkWithNoRoom)
   auto dirp = dir.getDirPointer(swapFilename);
   auto sector = dirp.getDataSector();
 
-  EXPECT_EQ(dir.truncate(dirp, 0), -ENOSPC);
+  auto moves = vector<DirChangeTracker::Entry> {};
+  EXPECT_EQ(dir.truncate(dirp, 0, moves), -ENOSPC);
+  EXPECT_TRUE(moves.empty());
 
   // since we had an error, nothing should have been disturbed
   dirp = dir.startScan();
@@ -1120,7 +1179,9 @@ TEST_F(DirectoryTest, TruncateGrowWithNoSpace)
   auto dir = Directory {blockCache.get()};
 
   auto dirp = dir.getDirPointer(swapFilename);
-  EXPECT_EQ(dir.truncate(dirp, 6 * Block::SECTOR_SIZE), -ENOSPC);
+  auto moves = vector<DirChangeTracker::Entry> {};
+  EXPECT_EQ(dir.truncate(dirp, 6 * Block::SECTOR_SIZE, moves), -ENOSPC);
+  EXPECT_TRUE(moves.empty());
 
   // ensure nothing changed
   dirp = dir.startScan();
@@ -1180,7 +1241,10 @@ TEST_F(DirectoryTest, TruncateGrowIntoExactPrecedingSpace)
   auto dir = Directory {blockCache.get()};
 
   auto dirp = dir.getDirPointer(swapFilename);
-  EXPECT_EQ(dir.truncate(dirp, 6 * Block::SECTOR_SIZE), 0);
+  auto moves = vector<DirChangeTracker::Entry> {};
+  EXPECT_EQ(dir.truncate(dirp, 6 * Block::SECTOR_SIZE, moves), 0);
+  expectAndRemove(moves, 1, 1, 1, 0);
+  EXPECT_TRUE(moves.empty());
 
   EXPECT_EQ(dirp.getSegment(), 1);
   EXPECT_EQ(dirp.getIndex(), 0); 
@@ -1242,10 +1306,10 @@ TEST_F(DirectoryTest, TruncateGrowIntoLargerPrecedingSpace)
   auto dir = Directory {blockCache.get()};
 
   auto dirp = dir.getDirPointer(swapFilename);
-  EXPECT_EQ(dir.truncate(dirp, 5 * Block::SECTOR_SIZE), 0);
-
-  EXPECT_EQ(dirp.getSegment(), 1);
-  EXPECT_EQ(dirp.getIndex(), 0);
+  auto moves = vector<DirChangeTracker::Entry> {};
+  EXPECT_EQ(dir.truncate(dirp, 5 * Block::SECTOR_SIZE, moves), 0);
+  expectAndRemove(moves, 1, 1, 1, 0);
+  EXPECT_TRUE(moves.empty());
 
   dirp = dir.startScan();
 

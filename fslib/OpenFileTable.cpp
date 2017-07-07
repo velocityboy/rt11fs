@@ -13,6 +13,7 @@ using std::endl;
 using std::find_if;
 using std::min;
 using std::unique_ptr;
+using std::vector;
 
 namespace RT11FS {
 
@@ -168,10 +169,14 @@ auto OpenFileTable::writeFile(int fd, const char *buffer, size_t count, off_t of
   auto extendFile = end > length;
 
   if (extendFile) {
-    auto err = directory->truncate(dirp, end);
+    auto moves = vector<DirChangeTracker::Entry> {};
+    auto err = directory->truncate(dirp, end, moves);
     if (err < 0) {
       return err;
     }
+
+    applyMoves(moves);
+    dirp = openFiles.at(fd).dirp;
   }
 
   while (offset < end) {
@@ -208,7 +213,19 @@ auto OpenFileTable::truncate(int fd, off_t newSize) -> int
   }
   auto &dirp = openFiles.at(fd).dirp;
 
-  return directory->truncate(dirp, newSize);
+  auto moves = vector<DirChangeTracker::Entry> {};
+  auto err = directory->truncate(dirp, newSize, moves);
+  if (err < 0) {
+    return err;
+  }
+
+  applyMoves(moves);
+  return err;
+}
+
+auto OpenFileTable::applyMoves(const std::vector<DirChangeTracker::Entry> &moves) -> void
+{
+
 }
 
 }

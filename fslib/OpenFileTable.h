@@ -1,6 +1,7 @@
 #ifndef __OPENFILETABLE_H_
 #define __OPENFILETABLE_H_
 
+#include "DirChangeTracker.h"
 #include "DirPtr.h"
 
 #include <string>
@@ -39,7 +40,9 @@ private:
     DirPtr dirp;    
   };
 
-  std::vector<OpenFileEntry> openFiles;  
+  std::vector<OpenFileEntry> openFiles;
+
+  auto applyMoves(const std::vector<DirChangeTracker::Entry> &moves) -> void;
 };
 }
 #endif

@@ -1,6 +1,7 @@
 add_library (fslib
   Block.cpp
   BlockCache.cpp
+  DirChangeTracker.cpp
   Directory.cpp
   DirPtr.cpp
   FileDataSource.cpp

@@ -36,7 +36,7 @@ auto FileDataSource::read(void *buffer, size_t bytes, off_t offset) -> ssize_t
 
   auto xfer = ::read(fd, buffer, bytes);
   if (xfer == -1) {
-    return -errno;
+    return -errno;  
   } else if (xfer != bytes) {
     return -EIO;
   }
