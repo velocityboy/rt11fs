@@ -20,6 +20,8 @@ public:
   auto beforeStart() const { return segment == -1; }
   auto afterEnd() const { return segment == 0; }
   auto offset(int delta = 0) const -> int;
+  auto setSegment(int seg) -> void;
+  auto setIndex(int idx) { index = idx; }
   auto getSegment() const { return segment; }
   auto getIndex() const { return index; }
   auto incIndex() { index++; }
@@ -55,7 +57,6 @@ private:
 
   auto increment() -> void;
   auto decrement() -> void;
-  auto setSegment(int seg) -> void;
 };
 }
 

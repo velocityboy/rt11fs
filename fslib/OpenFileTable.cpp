@@ -225,7 +225,16 @@ auto OpenFileTable::truncate(int fd, off_t newSize) -> int
 
 auto OpenFileTable::applyMoves(const std::vector<DirChangeTracker::Entry> &moves) -> void
 {
+  for (const auto &move : moves) {
+    auto iter = find_if(begin(openFiles), end(openFiles), [move](const auto &file) {
+      return move.oldSegment == file.dirp.getSegment() && move.oldIndex == file.dirp.getIndex();
+    });
 
+    if (iter != end(openFiles)) {
+      iter->dirp.setSegment(move.newSegment);
+      iter->dirp.setIndex(move.newIndex);
+    }
+  }
 }
 
 }
