@@ -321,7 +321,7 @@ auto Directory::statfs(struct statvfs *vfs) -> int
  *
  * @param dirp the directory entry to change.
  * @param newSize the new size, in bytes, of the entry.
- * @param moves a vector which will, on success, how file entries were moved 
+ * @param moves a vector which will, on success, record how file entries were moved 
  * @return 0 on success or a negated errno
  */
 auto Directory::truncate(DirPtr &dirp, off_t newSize, vector<DirChangeTracker::Entry> &moves) -> int
@@ -348,9 +348,43 @@ auto Directory::truncate(DirPtr &dirp, off_t newSize, vector<DirChangeTracker::E
   }
 
   moves.clear();
-
   auto gotMoves = tracker.getMoves();
+  copy(begin(gotMoves), end(gotMoves), back_inserter(moves));
 
+  return 0;
+}
+
+/**
+ * Delete the given file.
+ *
+ * If the file is open, FUSE will take care of renaming it for us and
+ * unlinking the name when the file is no longer open.
+ * 
+ * @param name the name of the file to delete.
+ * @param moves a vector which will, on success, record how file entries were moved 
+ * @return 0 on success or a negative errno
+ */
+auto Directory::removeEntry(const std::string &name, vector<DirChangeTracker::Entry> &moves) -> int
+{
+  auto dirp = unique_ptr<DirPtr> {};
+  auto err = getDirPointer(name, dirp);
+  if (err < 0) {
+    return err;
+  }
+
+  auto tracker = DirChangeTracker {};
+
+  // first, turn the file into free space
+  dirp->setWord(STATUS_WORD, E_MPTY);
+  for (auto i = 0; i < FILENAME_LENGTH; i++) {
+    dirp->setWord(FILENAME_WORDS + 2*i, 0);
+  }
+
+  // combine free blocks
+  coalesceNeighboringFreeBlocks(*dirp, tracker);
+
+  moves.clear();
+  auto gotMoves = tracker.getMoves();
   copy(begin(gotMoves), end(gotMoves), back_inserter(moves));
 
   return 0;

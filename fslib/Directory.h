@@ -46,6 +46,7 @@ public:
   auto moveNextFiltered(DirPtr &ptr, uint16_t mask) -> bool;
   auto statfs(struct statvfs *vfs) -> int;
   auto truncate(DirPtr &dirp, off_t size, std::vector<DirChangeTracker::Entry> &moves) -> int;
+  auto removeEntry(const std::string &name, std::vector<DirChangeTracker::Entry> &moves) -> int;
 
 private:
   int entrySize;

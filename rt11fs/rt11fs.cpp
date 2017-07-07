@@ -44,6 +44,11 @@ auto rt11_chmod(const char *path, mode_t mode) -> int
   return getFS()->chmod(path, mode);
 }
 
+auto rt11_unlink(const char *path) -> int
+{
+  return getFS()->unlink(path);
+}
+
 auto rt11_opendir(const char *, struct fuse_file_info *) -> int
 {
   return 0;
@@ -98,6 +103,7 @@ auto build_oper(struct fuse_operations *oper)
   oper->fgetattr = &rt11_fgetattr;
   oper->statfs = &rt11_statfs;
   oper->chmod = &rt11_chmod;
+  oper->unlink = &rt11_unlink;
   oper->opendir = &rt11_opendir;
   oper->releasedir = &rt11_releasedir;
   oper->readdir = &rt11_readdir;

@@ -223,6 +223,18 @@ auto OpenFileTable::truncate(int fd, off_t newSize) -> int
   return err;
 }
 
+auto OpenFileTable::unlink(const std::string &name) -> int
+{
+  auto moves = vector<DirChangeTracker::Entry> {};
+  auto err = directory->removeEntry(name, moves);
+  if (err < 0) {
+    return err;
+  }
+
+  applyMoves(moves);
+  return err;
+}
+
 auto OpenFileTable::applyMoves(const std::vector<DirChangeTracker::Entry> &moves) -> void
 {
   for (const auto &move : moves) {

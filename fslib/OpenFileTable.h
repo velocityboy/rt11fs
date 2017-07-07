@@ -30,6 +30,7 @@ public:
   auto readFile(int fd, char *buffer, size_t count, off_t offset) -> int;
   auto writeFile(int fd, const char *buffer, size_t count, off_t offset) -> int;
   auto truncate(int fd, off_t newSize) -> int;
+  auto unlink(const std::string &name) -> int;
 
 private:
   Directory *directory;

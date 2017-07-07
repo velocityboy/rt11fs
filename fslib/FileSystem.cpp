@@ -109,6 +109,18 @@ auto FileSystem::chmod(const char *, mode_t) -> int
   return 0;
 }
 
+auto FileSystem::unlink(const char *path) -> int
+{
+  return wrapper([this, path](){
+    auto parsedPath = string {path};
+    auto err = validatePath(parsedPath);
+    if (err < 0) {
+      return err;
+    }
+
+    return oft->unlink(parsedPath);
+  });
+}
 
 auto FileSystem::readdir(
   const char *path, void *buf, fuse_fill_dir_t filler,
