@@ -26,6 +26,7 @@ public:
   OpenFileTable(Directory *dir, BlockCache *cache);
 
   auto openFile(const std::string &name) -> int;
+  auto createFile(const std::string &name) -> int;
   auto closeFile(int fd) -> int;
   auto readFile(int fd, char *buffer, size_t count, off_t offset) -> int;
   auto writeFile(int fd, const char *buffer, size_t count, off_t offset) -> int;

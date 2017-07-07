@@ -70,6 +70,11 @@ auto rt11_open(const char *path, struct fuse_file_info *fi)
   return getFS()->open(path, fi);
 }
 
+auto rt11_create(const char *path, mode_t mode, struct fuse_file_info *fi)
+{
+  return getFS()->create(path, mode, fi);
+}
+
 auto rt11_release(const char *path, struct fuse_file_info *fi)
 {
   return getFS()->release(path, fi);
@@ -108,6 +113,7 @@ auto build_oper(struct fuse_operations *oper)
   oper->releasedir = &rt11_releasedir;
   oper->readdir = &rt11_readdir;
   oper->open = &rt11_open;
+  oper->create = &rt11_create;
   oper->release = &rt11_release;
   oper->ftruncate = &rt11_ftruncate;
   oper->read = &rt11_read;

@@ -75,9 +75,12 @@ auto OpenFileTable::openFile(const std::string &name) -> int
     openFiles.push_back(entry);  
   }
 
-  cerr << "openfile: fd " << index << endl;
-
   return index;
+}
+
+auto OpenFileTable::createFile(const std::string &name) -> int
+{
+  return -EINVAL;
 }
 
 /**
