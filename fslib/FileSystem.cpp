@@ -109,6 +109,25 @@ auto FileSystem::chmod(const char *, mode_t) -> int
   return 0;
 }
 
+auto FileSystem::rename(const char *oldName, const char *newName) -> int
+{
+  return wrapper([this, oldName, newName]() {
+    auto parsedOldPath = string {oldName};
+    auto parsedNewPath = string {newName};
+
+    auto err = validatePath(parsedOldPath);
+    if (err < 0) {
+      return err;
+    }
+    err = validatePath(parsedNewPath);
+    if (err < 0) {
+      return err;
+    }
+
+    return directory->rename(parsedOldPath, parsedNewPath);
+  });
+}
+
 
 auto FileSystem::readdir(
   const char *path, void *buf, fuse_fill_dir_t filler,

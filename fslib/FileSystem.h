@@ -28,6 +28,7 @@ public:
   auto fgetattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi) -> int;
   auto statfs(const char *, struct statvfs *fs) -> int;
   auto chmod(const char *, mode_t) -> int;
+  auto rename(const char *, const char *) -> int;
 
   auto readdir(
     const char *path, void *buf, fuse_fill_dir_t filler,
