@@ -29,6 +29,7 @@ using std::endl;
 using std::find_if;
 using std::out_of_range;
 using std::make_unique;
+using std::unique_ptr;
 using std::vector;
 
 namespace {
@@ -1357,6 +1358,8 @@ TEST_F(DirectoryTest, RemoveEntry)
       Ent {E_EOS}
     },
   };
+ 
+  builder.formatWithEntries(segments, dirdata);
 
   auto dir = Directory {blockCache.get()};
 
@@ -1411,7 +1414,140 @@ TEST_F(DirectoryTest, RemoveEntryWithAdjacentFreeSpace)
   EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), 1);
   EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), 2);
   EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), 3);
-  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 2+3+4); 
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 3); 
+}
+
+TEST_F(DirectoryTest, SimpleCreate)
+{
+  auto segments = 8;
+  auto swapFilename = Rad50Name { 075131, 062000, 075273 };   // SWAP.SYS
+  auto swapTxtFilename = Rad50Name { 075131, 062000, 0100324 };   // SWAP.TXT
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_MPTY, 2 },
+      Ent {E_PERM, 3, swapFilename },
+      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA },
+      Ent {E_EOS}
+    },
+  };
+
+  builder.formatWithEntries(segments, dirdata);
+  auto dir = Directory {blockCache.get()};
+
+  auto dirpFreeSpace = dir.startScan();
+  ++dirpFreeSpace;    // 2 sectors E_MPTY
+  ++dirpFreeSpace;    // SWAP.SYS
+  ++dirpFreeSpace;    // rest of data free block
+
+  auto freeSpaceSize = dirpFreeSpace.getWord(TOTAL_LENGTH_WORD);
+
+  auto dirp = dir.getDirPointer(swapFilename);
+  auto moves = vector<DirChangeTracker::Entry> {};
+
+  auto dirpp = unique_ptr<DirPtr> {};
+  EXPECT_EQ(dir.createEntry("SWAP.TXT", dirpp, moves), 0);
+  EXPECT_TRUE(moves.empty());
+
+  dirp = dir.startScan();
+
+  ++dirp;
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 2);
+
+  ++dirp;
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapFilename[0]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), swapFilename[1]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), swapFilename[2]);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 3);
+
+  ++dirp;
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_TENT);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapTxtFilename[0]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), swapTxtFilename[1]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), swapTxtFilename[2]);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 0);
+
+  ++dirp;
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), freeSpaceSize);
+
+  ++dirp;
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_EOS);
+}
+
+TEST_F(DirectoryTest, CreateWithCarve)
+{
+  auto segments = 8;
+  auto swapFilename = Rad50Name { 075131, 062000, 075273 };   // SWAP.SYS
+  auto swapTxtFilename = Rad50Name { 075131, 062000, 0100324 };   // SWAP.TXT
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_MPTY, 2 },
+      Ent {E_TENT, 3, swapFilename },
+      Ent {E_MPTY, 200 },
+      Ent {E_EOS}
+    },
+  };
+
+  builder.formatWithEntries(segments, dirdata);
+  auto dir = Directory {blockCache.get()};
+
+  auto dirp = dir.getDirPointer(swapFilename);
+  auto moves = vector<DirChangeTracker::Entry> {};
+
+  auto dirpp = unique_ptr<DirPtr> {};
+  EXPECT_EQ(dir.createEntry("SWAP.TXT", dirpp, moves), 0);
+  EXPECT_TRUE(moves.empty());
+
+  // since there's a TENT before the big free space block, create should
+  // split the free space in half and put the new entry in the middle, on
+  // the theory that the TENT entry is an open file that might want to grow
+  dirp = dir.startScan();
+
+  ++dirp;
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 2);
+
+  ++dirp;
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_TENT);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapFilename[0]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), swapFilename[1]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), swapFilename[2]);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 3);
+
+  ++dirp;
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 100);
+
+  ++dirp;
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_TENT);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), swapTxtFilename[0]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), swapTxtFilename[1]);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), swapTxtFilename[2]);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 0);
+
+  ++dirp;
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 100);
+
+  ++dirp;
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_EOS);
 }
 
 }
