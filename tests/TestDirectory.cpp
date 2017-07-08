@@ -1343,4 +1343,75 @@ TEST_F(DirectoryTest, TruncateGrowIntoLargerPrecedingSpace)
   EXPECT_EQ(dirp.getWord(STATUS_WORD), E_EOS);
 }
 
+TEST_F(DirectoryTest, RemoveEntry)
+{
+  auto segments = 8;
+  auto swapFilename = Rad50Name { 075131, 062000, 075273 };   // SWAP.SYS
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_PERM, 3, swapFilename },
+      Ent {E_PERM, 3, Rad50Name {1, 2, 3} },      
+      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA },
+      Ent {E_EOS}
+    },
+  };
+
+  auto dir = Directory {blockCache.get()};
+
+  auto dirp = dir.getDirPointer(swapFilename);
+  auto moves = vector<DirChangeTracker::Entry> {};
+
+  EXPECT_EQ(dir.removeEntry("SWAP.SYS", moves), 0);
+
+  EXPECT_TRUE(moves.empty());
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 3);
+}
+
+TEST_F(DirectoryTest, RemoveEntryWithAdjacentFreeSpace)
+{
+  auto segments = 8;
+  auto swapFilename = Rad50Name { 075131, 062000, 075273 };   // SWAP.SYS
+
+  using Ent = DirectoryBuilder::DirEntry;
+  vector<vector<Ent>> dirdata = {
+    {
+      Ent {E_MPTY, 2 },
+      Ent {E_PERM, 3, swapFilename },
+      Ent {E_MPTY, 4 },
+      Ent {E_PERM, 3, Rad50Name {1, 2, 3} },      
+      Ent {E_MPTY, DirectoryBuilder::REST_OF_DATA },
+      Ent {E_EOS}
+    },
+  };
+
+  builder.formatWithEntries(segments, dirdata);
+  auto dir = Directory {blockCache.get()};
+
+  auto dirp = dir.getDirPointer(swapFilename);
+  auto moves = vector<DirChangeTracker::Entry> {};
+
+  EXPECT_EQ(dir.removeEntry("SWAP.SYS", moves), 0);
+  expectAndRemove(moves, 1, 3, 1, 1);
+  EXPECT_TRUE(moves.empty());
+
+  dirp = dir.startScan();
+
+  ++dirp;
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_MPTY);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 2+3+4);
+
+  ++dirp;
+
+  EXPECT_EQ(dirp.getWord(STATUS_WORD), E_PERM);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 0), 1);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 2), 2);
+  EXPECT_EQ(dirp.getWord(FILENAME_WORDS + 4), 3);
+  EXPECT_EQ(dirp.getWord(TOTAL_LENGTH_WORD), 2+3+4); 
+}
+
 }
