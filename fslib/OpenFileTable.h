@@ -44,6 +44,7 @@ private:
 
   std::vector<OpenFileEntry> openFiles;
 
+  auto open(const DirPtr &dirp) -> int;
   auto applyMoves(const std::vector<DirChangeTracker::Entry> &moves) -> void;
 };
 }

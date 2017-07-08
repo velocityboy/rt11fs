@@ -195,7 +195,8 @@ auto FileSystem::create(const char *path, mode_t mode, struct fuse_file_info *fi
 auto FileSystem::release(const char *path, struct fuse_file_info *fi) -> int
 {
   return wrapper([this, fi]() {
-    return oft->closeFile(fi->fh);
+    auto err = oft->closeFile(fi->fh);
+    return err;
   });
 }
 

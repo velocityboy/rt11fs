@@ -5,7 +5,9 @@
 
 #include <cassert>
 #include <cerrno>
+#include <ctime>
 
+using std::min;
 using std::string;
 using std::unique_ptr;
 using std::vector;
@@ -388,6 +390,100 @@ auto Directory::removeEntry(const std::string &name, vector<DirChangeTracker::En
   copy(begin(gotMoves), end(gotMoves), back_inserter(moves));
 
   return 0;
+}
+
+/**
+ * Create a new file.
+ *
+ * Create a new entry with the given name. The entry will be zero length and we will 
+ * grow it as needed.
+ *  
+ * @param name the name of the file to create.
+ * @param dirpp on success, set to the new entry.
+ * @param moves a vector which will, on success, record how file entries were moved. 
+ * @return 0 on success or a negative errno
+ */
+auto Directory::createEntry(const string &name, unique_ptr<DirPtr> &dirpp, vector<DirChangeTracker::Entry> &moves) -> int
+{
+  auto rad50Name = Rad50Name {};
+  if (!parseFilename(name, rad50Name)) {
+    return -EINVAL;
+  }
+
+  auto dirp = findLargestFreeBlock();
+  if (dirp.afterEnd()) {
+    return -ENOSPC;
+  }
+
+  auto tracker = DirChangeTracker {};
+
+  // if there's another open file right before us, then we want to leave it 
+  // space to grow. otherwise, just put the new entry right at the start of the 
+  // free block.
+  auto prev = dirp.prev();
+  if (!prev.beforeStart() && prev.hasStatus(E_TENT)) {
+    auto size = dirp.getWord(TOTAL_LENGTH_WORD) / 2;    
+
+    auto err = carveFreeBlock(dirp, size, tracker);
+    if (err < 0) {
+      return err;
+    }
+
+    ++dirp;
+    assert(!dirp.afterEnd());
+    assert(dirp.hasStatus(E_MPTY));
+  } 
+    
+  auto err = insertEmptyAt(dirp, tracker);
+  if (err < 0) {
+    return err;
+  }
+
+  // Build the new entry. It'll be a zero-sector tentative file.
+  // The size is already set.
+  dirp.setWord(STATUS_WORD, E_TENT);
+  for (auto i = 0; i < FILENAME_LENGTH; i++) {
+    dirp.setWord(FILENAME_WORDS + 2*i, rad50Name[i]);
+  }
+
+  auto now = time(nullptr);
+  auto tm = localtime(&now);
+  auto year = tm->tm_year + 1900;
+
+  // year will work until 2099
+  year = min(year, 2099);
+  year -= 1972;
+
+  auto age = year / 32;
+  year = year % 32;
+  auto mon = tm->tm_mon + 1;
+  auto day = tm->tm_mday;
+
+  auto date =
+    ((age << 14) & 0b1100000000000000) |
+    ((mon << 10) & 0b0011110000000000) |
+    ((day <<  5) & 0b0000001111100000) |
+    (year        & 0b0000000000011111);
+  
+  dirp.setWord(CREATION_DATE_WORD, date);
+
+  dirpp.reset(new DirPtr {dirp});
+
+  return 0;
+}
+
+/**
+ * If the entry is tentative (E_TENT) then make it a permanent file.
+ *
+ * An entry will be tentative if it was a new entry created with `createEntry'.
+ *
+ * @param dirp the entry to make permanent.
+ */
+auto Directory::makeEntryPermanent(DirPtr &dirp) -> void
+{
+  if (dirp.hasStatus(E_TENT)) {
+    dirp.setWord(STATUS_WORD, E_PERM);    
+  }
 }
 
 /**
