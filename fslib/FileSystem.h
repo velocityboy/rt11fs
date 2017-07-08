@@ -29,6 +29,7 @@ public:
   auto statfs(const char *, struct statvfs *fs) -> int;
   auto chmod(const char *, mode_t) -> int;
   auto unlink(const char *path) -> int;
+  auto rename(const char *, const char *) -> int;
 
   auto readdir(
     const char *path, void *buf, fuse_fill_dir_t filler,

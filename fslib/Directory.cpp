@@ -133,17 +133,14 @@ auto Directory::getDirPointer(const std::string &name, unique_ptr<DirPtr> &dirpp
 }
 
 /** 
- * Retrieve the directory entry for a named file
+ * Gets a directory pointer to the named file.
  *
- * Scans the directory looking for the named file and fills in `ent'.
- * Will return entries for any object other than end of segment (such as 
- * temporary entries.)
- * 
- * @param name the name of the file to search for, in Rad50
- * @param ent on success, the directory entry for `name'.
- * @return 0 on success or a negated errno.
- * @retval -EINVAL if the filename cannot be parsed
- * @retval -ENOENT if the filename is not found in the directory
+ * Returns the entry for any file status except end of segment.
+ * TODO this should probably be tighter.
+ *
+ * @param name the Rad50 representation of the filename.
+ * @return a pointer to the entry, or a pointer past the end of the directory if
+ * the file does not exist.
  */
 auto Directory::getDirPointer(const Dir::Rad50Name &name) -> DirPtr
 {
@@ -386,6 +383,50 @@ auto Directory::removeEntry(const std::string &name, vector<DirChangeTracker::En
   moves.clear();
   auto gotMoves = tracker.getMoves();
   copy(begin(gotMoves), end(gotMoves), back_inserter(moves));
+
+  return 0;
+}
+
+/**
+ * Rename a file.
+ *
+ * If the file's new name is the name of an existing file, then the existing file
+ * will be overwritten.
+ *
+ * TODO FUSE will rename files to unique names if open file object is overwritten.
+ * The names it uses are not Rad50 safe. Translate them.
+ * 
+ * @param oldName is the name of the file to rename.
+ * @param newName is the new name of the file.
+ */
+auto Directory::rename(const std::string &oldName, const std::string &newName) -> int
+{
+  auto oldRad50 = Rad50Name {};
+  if (!parseFilename(oldName, oldRad50)) {
+    return -EINVAL;
+  }
+
+  auto newRad50 = Rad50Name {};
+  if (!parseFilename(newName, newRad50)) {
+    return -EINVAL;
+  }
+
+  auto oldp = getDirPointer(oldRad50);
+  auto newp = getDirPointer(newRad50);
+
+  if (oldp.afterEnd()) {
+    return -ENOENT;
+  }
+
+  if (!newp.afterEnd()) {
+    // TODO unlink
+  }
+
+  for (auto i = 0; i < FILENAME_LENGTH; i++) {
+    oldp.setWord(FILENAME_WORDS + 2 * i, newRad50[i]);
+  }
+
+  cache->sync();
 
   return 0;
 }

@@ -47,6 +47,7 @@ public:
   auto statfs(struct statvfs *vfs) -> int;
   auto truncate(DirPtr &dirp, off_t size, std::vector<DirChangeTracker::Entry> &moves) -> int;
   auto removeEntry(const std::string &name, std::vector<DirChangeTracker::Entry> &moves) -> int;
+  auto rename(const std::string &oldName, const std::string &newName) -> int;
 
 private:
   int entrySize;

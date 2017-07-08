@@ -114,11 +114,25 @@ auto FileSystem::unlink(const char *path) -> int
   return wrapper([this, path](){
     auto parsedPath = string {path};
     auto err = validatePath(parsedPath);
+    return oft->unlink(parsedPath);
+  });
+}
+
+auto FileSystem::rename(const char *oldName, const char *newName) -> int
+{
+  return wrapper([this, oldName, newName]() {
+    auto parsedOldPath = string {oldName};
+    auto parsedNewPath = string {newName};
+
+    auto err = validatePath(parsedOldPath);
     if (err < 0) {
       return err;
     }
-
-    return oft->unlink(parsedPath);
+    err = validatePath(parsedNewPath);
+    if (err < 0) {
+      return err;
+    }    
+    return directory->rename(parsedOldPath, parsedNewPath);
   });
 }
 
