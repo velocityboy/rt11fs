@@ -49,8 +49,45 @@ auto OpenFileTable::openFile(const std::string &name) -> int
     return err;
   }
 
-  auto iter = find_if(begin(openFiles), end(openFiles), [&dirpp](auto &p) {
-    return dirpp->getSegment() == p.dirp.getSegment() && dirpp->getIndex() == p.dirp.getIndex();
+  return open(*dirpp);
+}
+
+auto OpenFileTable::createFile(const std::string &name) -> int
+{
+  // does it already exist? if so, truncate and open
+  //
+  auto dirpp = unique_ptr<DirPtr> {};
+
+  auto err = directory->getDirPointer(name, dirpp);
+  if (err == 0) {
+    auto fd = open(*dirpp);
+    if (fd < 0) {
+      return fd;
+    }
+
+    err = truncate(fd, 0);
+    if (err < 0) {
+      return err;
+    }
+
+    return fd;
+  }
+
+  auto moves = vector<DirChangeTracker::Entry> {};
+  err = directory->createEntry(name, dirpp, moves);
+  if (err < 0) {
+    return err;
+  }
+  
+  applyMoves(moves);
+
+  return open(*dirpp);
+}
+
+auto OpenFileTable::open(const DirPtr &dirp) -> int
+{
+  auto iter = find_if(begin(openFiles), end(openFiles), [&dirp](auto &p) {
+    return dirp.getSegment() == p.dirp.getSegment() && dirp.getIndex() == p.dirp.getIndex();
   });
 
   if (iter != end(openFiles)) {
@@ -59,7 +96,7 @@ auto OpenFileTable::openFile(const std::string &name) -> int
   }
 
   auto entry = OpenFileEntry {
-    .dirp = *dirpp,
+    .dirp = dirp,
     .refcnt = 1
   };
 
@@ -75,7 +112,7 @@ auto OpenFileTable::openFile(const std::string &name) -> int
     openFiles.push_back(entry);  
   }
 
-  cerr << "openfile: fd " << index << endl;
+  cerr << "open " << index << endl;
 
   return index;
 }
@@ -91,11 +128,20 @@ auto OpenFileTable::openFile(const std::string &name) -> int
  */
 auto OpenFileTable::closeFile(int fd) -> int
 {
-  if (openFiles.at(fd).refcnt <= 0) {
+  cerr << "close " << fd << endl;
+
+  auto &slot = openFiles.at(fd);
+
+  if (slot.refcnt <= 0) {
     return -EINVAL;
   }
 
-  openFiles.at(fd).refcnt--;
+  slot.refcnt--;
+
+  if (slot.refcnt == 0) {
+    directory->makeEntryPermanent(slot.dirp);
+    cache->sync();
+  }
   return 0;
 }
 

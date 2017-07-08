@@ -181,10 +181,36 @@ auto FileSystem::open(const char *path, struct fuse_file_info *fi) -> int
   });
 }
 
+auto FileSystem::create(const char *path, mode_t mode, struct fuse_file_info *fi) -> int
+{
+  return wrapper([this, path, mode, fi](){
+    auto parsedPath = string {path};
+    auto err = validatePath(parsedPath);
+    if (err < 0) {
+      return err;
+    }
+
+    if ((mode & S_IFMT) != S_IFREG) {
+      return -EINVAL;
+    }
+
+    auto fd = oft->createFile(parsedPath);
+    if (fd < 0) {
+      return fd;
+    }
+
+    fi->fh = fd;
+
+    return 0;
+  });
+}
+
+
 auto FileSystem::release(const char *path, struct fuse_file_info *fi) -> int
 {
   return wrapper([this, fi]() {
-    return oft->closeFile(fi->fh);
+    auto err = oft->closeFile(fi->fh);
+    return err;
   });
 }
 
