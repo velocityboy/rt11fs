@@ -210,15 +210,12 @@ auto Directory::getEnt(const DirPtr &ptr, DirEnt &ent) -> bool
   struct tm tm;
   memset(&tm, 0, sizeof(tm));
 
-  auto dateWord = ptr.getWord(CREATION_DATE_WORD); 
+  auto dateWord = ptr.getWord(CREATION_DATE_WORD);
+  
+  // on an invalid date, tm will remain empty
+  dirTimeToTime(dateWord, tm);
 
-  auto age = (dateWord >> 14) & 03;  
-  tm.tm_mon = ((dateWord >> 10) & 017) - 1;
-  tm.tm_mday = (dateWord >> 5) & 037;
-  tm.tm_year = 72 + age * 32 + (dateWord & 037);
-
-  ent.create_time = mktime(&tm);  
-
+  ent.create_time = mktime(&tm);
   return true;
 }
 
@@ -488,24 +485,11 @@ auto Directory::createEntry(const string &name, unique_ptr<DirPtr> &dirpp, vecto
 
   auto now = time(nullptr);
   auto tm = localtime(&now);
-  auto year = tm->tm_year + 1900;
+  auto dirtime = uint16_t {0};
 
-  // year will work until 2099
-  year = min(year, 2099);
-  year -= 1972;
-
-  auto age = year / 32;
-  year = year % 32;
-  auto mon = tm->tm_mon + 1;
-  auto day = tm->tm_mday;
-
-  auto date =
-    ((age << 14) & 0b1100000000000000) |
-    ((mon << 10) & 0b0011110000000000) |
-    ((day <<  5) & 0b0000001111100000) |
-    (year        & 0b0000000000011111);
+  timeToDirTime(*tm, dirtime);
   
-  dirp.setWord(CREATION_DATE_WORD, date);
+  dirp.setWord(CREATION_DATE_WORD, dirtime);
 
   dirpp.reset(new DirPtr {dirp});
 
@@ -1107,4 +1091,92 @@ auto Directory::parseFilename(const std::string &name, Rad50Name &rad50) -> bool
   return true;
 }
 
-} 
+/** 
+ * Convert an RT-11 directory timestamp to a tm
+ *
+ * @param dirTime the time to convert
+ * @param tm on success, `dirTime' as a tm struct
+ * @return true on success
+ */
+auto Directory::dirTimeToTime(uint16_t dirTime, struct tm &tm) -> bool
+{
+  auto year = dirTime & 0b0000000000011111;
+  auto day = (dirTime & 0b0000001111100000) >> 5;
+  auto mon = (dirTime & 0b0011110000000000) >> 10;
+  auto age = (dirTime & 0b1100000000000000) >> 14;
+
+
+  if (mon < 1 || mon > 12) {
+    return false;
+  }
+
+  auto monthLengths = vector<int>{ 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+  auto leap = (year % 4) == 0 && ((year % 100) != 0 || (year % 400) == 0);
+  if (leap) {
+    monthLengths[2]++;
+  }
+
+  if (day < 1 || day > monthLengths.at(mon)) {
+    return false;
+  }
+
+  year = 1972 + year + age * 32;
+
+  memset(&tm, 0, sizeof(struct tm));
+  tm.tm_year = year - 1900;
+  tm.tm_mon = mon - 1;
+  tm.tm_mday = day;
+
+  return true;
+}
+
+/**
+ * Convert a struct tm to an RT-11 directory timestamp
+ *
+ * @param tm the time to convert.
+ * @param dirtime on success, the converted time.
+ * @return true on success, false if the timestamp was invalid
+ */
+auto Directory::timeToDirTime(const struct tm &tm, uint16_t &dirTime) -> bool
+{    
+  auto monthLengths = vector<int>{ 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+
+  auto year = tm.tm_year + 1900;
+  auto leap = (year % 4) == 0 && ((year % 100) != 0 || (year % 400) == 0);
+  if (leap) {
+    monthLengths[2]++;
+  }
+
+  if (tm.tm_mon < 0 || tm.tm_mon > 11) {
+    return false;
+  }
+
+  if (tm.tm_mday < 1 || tm.tm_mday > monthLengths.at(tm.tm_mon + 1)) {
+    return false;
+  }
+
+  // the maximum representable year based on the bitfields in a timestamp
+  // (works out to 2099).
+  const auto maxYear =  1972 + 4 * 32 + 31;
+  if (year > maxYear) {
+    return false;
+  }
+
+  year -= 1972;
+  auto age = year / 32;
+  year = year - age * 32;
+
+  auto mon = 1 + tm.tm_mon;
+  auto day = tm.tm_mday;
+
+  dirTime = 
+    ((age << 14) & 0b1100000000000000) |
+    ((mon << 10) & 0b0011110000000000) |
+    ((day <<  5) & 0b0000001111100000) |
+    (year        & 0b0000000000011111);
+
+  return true;
+}
+
+
+}

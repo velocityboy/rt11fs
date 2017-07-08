@@ -74,6 +74,8 @@ private:
   auto moveEntryAcrossSegments(const DirPtr &src, const DirPtr &dst, DirChangeTracker &tracker) -> void;
 
   static auto parseFilename(const std::string &name, Dir::Rad50Name &rad50) -> bool;
+  static auto dirTimeToTime(uint16_t dirTime, struct tm &tm) -> bool;
+  static auto timeToDirTime(const struct tm &tm, uint16_t &dirtime) -> bool;
 };
 }
 
