@@ -44,15 +44,14 @@ auto rt11_chmod(const char *path, mode_t mode) -> int
   return getFS()->chmod(path, mode);
 }
 
-<<<<<<< HEAD
 auto rt11_unlink(const char *path) -> int
 {
   return getFS()->unlink(path);
-=======
+}
+
 auto rt11_rename(const char *oldName, const char *newName) -> int
 { 
   return getFS()->rename(oldName, newName);
->>>>>>> rename
 }
 
 auto rt11_opendir(const char *, struct fuse_file_info *) -> int
