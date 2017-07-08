@@ -1,3 +1,6 @@
+// Copyright 2017 Jim Geist. This software is licensed under the 
+// MIT license as described in the file LICENSE.txt.
+
 #ifndef __DIRCONST_H_
 #define __DIRCONST_H_
 

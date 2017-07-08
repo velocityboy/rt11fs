@@ -1,3 +1,6 @@
+// Copyright 2017 Jim Geist. This software is licensed under the 
+// MIT license as described in the file LICENSE.txt.
+
 #ifndef __FILEDATASOURCE_H_
 #define __FILEDATASOURCE_H_
 

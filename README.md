@@ -5,7 +5,7 @@ implements a full read/write file system that can mount any RT-11 disk pack imag
 tested on OS/X.
 
 Installation is similar to other FUSE file systems. The driver builds with cmake. It assumes that FUSE is already
-installed and can be found in /usr/local/...
+installed and can be found in /usr/local/... After building, the rt11fs binary should be copied to /usr/local/sbin.
 
 Mounting requires specifying the path to the disk image with the -i flag. For example, to mount foo.dsk:
 
