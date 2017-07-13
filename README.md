@@ -4,14 +4,14 @@ RT11FS is a FUSE file system driver that understands the [RT-11](https://en.wiki
 implements a full read/write file system that can mount any RT-11 disk pack image. Currently, the driver has only been
 tested on OS/X.
 
-Installation is similar to other FUSE file systems. The driver builds with cmake. It assumes that FUSE is already
-installed and can be found in /usr/local/... After building, the rt11fs binary should be copied to /usr/local/sbin.
+Once built, file systems can be mounted using the rt11fs binary:
 
-Mounting requires specifying the path to the disk image with the -i flag. For example, to mount foo.dsk:
+`rt11fs mnt -i foo.dsk`
 
-`mount mnt -i foo.dsk`
+umount can be used to unmount the filesystem. 
 
 ## TODO/known issues
+* Install rt11fs as a real OS X filesystem so it can be used with `mount'.
 * Support compiling on Linux.
 * Support squeeze. The file system keeps all files contiguous on disk (per DEC employees, this was done to make reads and
 writes as fast as possibly since RT-11 is a real-time OS.) This leads to volume fragmentation, and the disk must occasionally 
