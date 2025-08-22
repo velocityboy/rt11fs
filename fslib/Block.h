@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <cstring>
 
 namespace RT11FS {
 class DataSource;

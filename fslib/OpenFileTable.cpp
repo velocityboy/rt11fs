@@ -99,8 +99,8 @@ auto OpenFileTable::open(const DirPtr &dirp) -> int
   }
 
   auto entry = OpenFileEntry {
-    .dirp = dirp,
-    .refcnt = 1
+    .refcnt = 1,
+    .dirp = dirp
   };
 
   iter = find_if(begin(openFiles), end(openFiles), [](auto &p) {

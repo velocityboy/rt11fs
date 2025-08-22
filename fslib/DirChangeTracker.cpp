@@ -66,9 +66,9 @@ auto DirChangeTracker::moveDirEntry(const DirPtr &src, const DirPtr &dst) -> voi
     Entry entry {
       .oldSegment = src.getSegment(),
       .oldIndex = src.getIndex(),
+      .moveTransaction = transaction,
       .newSegment = dst.getSegment(),
-      .newIndex = dst.getIndex(),
-      .moveTransaction = transaction
+      .newIndex = dst.getIndex()
     };
     moves.push_back(entry);
   }

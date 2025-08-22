@@ -5,7 +5,7 @@
 #include "Directory.h"
 #include "FileDataSource.h"
 #include "FileSystem.h"
-#include "FileSystemException.h"
+#include "FilesystemException.h"
 #include "OpenFileTable.h"
 
 #include <algorithm>
@@ -31,9 +31,19 @@ namespace RT11FS {
 FileSystem::FileSystem(const string &name)
   : fd(-1)
 {
+#if defined(__APPLE__)
   fd = ::open(name.c_str(), O_RDWR|O_EXLOCK);
+#elif defined(__linux__)
+  fd = ::open(name.c_str(), O_RDWR|F_EXLCK);
+#else
+  #error Unsupported OS
+#endif
   if (fd == -1) {
-    throw FilesystemException {-ENOENT, "volume file could not be opened"};
+    std::string err_msg = "volume file could not be opened: ";
+    err_msg += name.c_str();
+    err_msg += ": ";
+    err_msg += std::strerror(errno);
+    throw FilesystemException {-ENOENT, err_msg};
   }
 
   dataSource = make_unique<FileDataSource>(fd);
@@ -148,15 +158,23 @@ auto FileSystem::readdir(
     if (p != "/") {
       return -ENOENT;
     }
-
+#if defined(__APPLE__)
     filler(buf, ".", NULL, 0);
     filler(buf, "..", NULL, 0);
+#elif defined(__linux__)
+    filler(buf, ".", NULL, 0, FUSE_FILL_DIR_PLUS);
+    filler(buf, "..", NULL, 0, FUSE_FILL_DIR_PLUS);
+#endif
 
     auto scan = directory->startScan();
     while (directory->moveNextFiltered(scan, Dir::E_PERM)) {
       auto ent = DirEnt {};
       if (directory->getEnt(scan, ent)) {
+#if defined(__APPLE__)
         filler(buf, ent.name.c_str(), NULL, 0);
+#elif defined(__linux__)
+        filler(buf, ent.name.c_str(), NULL, 0, FUSE_FILL_DIR_PLUS);
+#endif
       }
     }
 
