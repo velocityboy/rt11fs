@@ -4,7 +4,11 @@
 #ifndef __LOGUNIMPL_H_
 #define __LOGUNIMPL_H_
 
-#include <fuse.h>
+#if defined(__linux__)
+  #include <fuse3/fuse.h>
+#else
+  #include <fuse.h>
+#endif
 
 extern void add_unimpl(struct fuse_operations *oper);
 

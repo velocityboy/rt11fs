@@ -5,6 +5,7 @@ set (GTEST_ROOT "${CMAKE_CURRENT_BINARY_DIR}/install")
 ExternalProject_Add(
   GTestBuild
   GIT_REPOSITORY "https://github.com/google/googletest.git"
+  GIT_TAG "main"
   PREFIX "${CMAKE_CURRENT_BINARY_DIR}/build"
   CMAKE_ARGS
     -DBUILD_SHARED_LIBS:BOOL=ON
@@ -14,9 +15,15 @@ ExternalProject_Add(
 )
 find_package(GTest REQUIRED)
 
-add_definitions(-DFUSE_USE_VERSION=26)
-add_definitions(-D_FILE_OFFSET_BITS=64)
-add_definitions(-D_DARWIN_USE_64_BIT_INODE)
+if(MACOS)
+	add_definitions(-DFUSE_USE_VERSION=26)
+	add_definitions(-D_FILE_OFFSET_BITS=64)
+	add_definitions(-D_DARWIN_USE_64_BIT_INODE)
+endif()
+if(LINUX)
+	add_definitions(-DFUSE_USE_VERSION=30)
+	add_definitions(-D_FILE_OFFSET_BITS=64)
+endif()
 
 add_executable (tests
   DirectoryBuilder.cpp

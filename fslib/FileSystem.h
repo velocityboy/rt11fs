@@ -5,7 +5,11 @@
 #define __FILESYSTEM_H_
 
 #include <functional>
-#include <fuse.h>
+#if defined(__linux__)
+  #include <fuse3/fuse.h>
+#else
+  #include <fuse.h>
+#endif
 #include <memory>
 #include <string>
 #include <vector>

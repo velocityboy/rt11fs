@@ -8,10 +8,14 @@
 #include "DirConst.h"
 #include "DirPtr.h"
 
+#if defined(__linux__)
+  #include <fuse3/fuse.h>
+#else
+  #include <fuse.h>
+#endif
 #include <array>
 #include <cstdint>
 #include <ctime>
-#include <fuse.h>
 #include <string>
 #include <vector>
 
