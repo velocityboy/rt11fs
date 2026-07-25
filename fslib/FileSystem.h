@@ -1,4 +1,4 @@
-// Copyright 2017 Jim Geist. This software is licensed under the 
+// Copyright 2017 Jim Geist. This software is licensed under the
 // MIT license as described in the file LICENSE.txt.
 
 #ifndef __FILESYSTEM_H_
@@ -50,9 +50,6 @@ public:
   auto ftruncate(const char *path, off_t size, struct fuse_file_info *fi) -> int;
   auto fsync(const char *path, int isdatasync, struct fuse_file_info *fi) -> int;
 
-  // utilities which aren't properly part of the file system
-  auto lsdir() -> void;
-
 private:
   int fd;
   std::unique_ptr<DataSource> dataSource;
@@ -62,7 +59,7 @@ private:
 
   static auto wrapper(std::function<int(void)> fn) -> int;
   auto validatePath(std::string &path) -> int;
-}; 
+};
 
 };
 

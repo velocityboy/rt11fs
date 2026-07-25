@@ -1,4 +1,4 @@
-// Copyright 2017 Jim Geist. This software is licensed under the 
+// Copyright 2017 Jim Geist. This software is licensed under the
 // MIT license as described in the file LICENSE.txt.
 
 #include "BlockCache.h"
@@ -144,7 +144,7 @@ auto FileSystem::rename(const char *oldName, const char *newName) -> int
     err = validatePath(parsedNewPath);
     if (err < 0) {
       return err;
-    }    
+    }
     return directory->rename(parsedOldPath, parsedNewPath);
   });
 }
@@ -237,8 +237,8 @@ auto FileSystem::release(const char *path, struct fuse_file_info *fi) -> int
 
 
 auto FileSystem::read(
-  const char *path, char *buf, size_t count, off_t offset, 
-  struct fuse_file_info *fi) -> int 
+  const char *path, char *buf, size_t count, off_t offset,
+  struct fuse_file_info *fi) -> int
 {
   return wrapper([this, path, buf, count, offset, fi] {
     return oft->readFile(fi->fh, buf, count, offset);
@@ -256,7 +256,7 @@ auto FileSystem::write(
 
 auto FileSystem::ftruncate(const char *path, off_t size, struct fuse_file_info *fi) -> int
 {
-  return wrapper([this, size, fi]() {    
+  return wrapper([this, size, fi]() {
     return oft->truncate(fi->fh, size);
   });
 }
@@ -300,70 +300,11 @@ auto FileSystem::validatePath(string &path) -> int
   }
 
   if (path.find('/', 1) != string::npos) {
-    return -ENOENT;    
+    return -ENOENT;
   }
 
   path = path.substr(1);
   return 0;
-}
-
-auto FileSystem::lsdir() -> void
-{
-  auto dirp = directory->startScan();
-
-  cout << "SEG,IDX ---NAME--- LENGTH SECTOR" << endl;
-  while (++dirp) {
-    auto status = dirp.getWord(Dir::STATUS_WORD);
-
-    auto ent = DirEnt {};
-
-    directory->getEnt(dirp, ent);
-    cout << setfill(' ');
-    cout << setw(3) << dirp.getSegment() << "," << setw(3) << dirp.getIndex() << " ";
-    if (dirp.hasStatus(Dir::E_MPTY)) {
-      cout << setw(10) << "<FREE>";
-    } else {
-      cout << setw(10) << ent.name;
-    }
-    cout << " " << setw(6) << ent.length / Block::SECTOR_SIZE;
-    cout << " " << setw(6) << ent.sector0;
-
-    auto date = dirp.getWord(Dir::CREATION_DATE_WORD);
-    if (date == 0) {
-      cout << "     -  -  ";
-    } else {
-      auto age = (date >> 14) & 0x03;
-      auto month = (date >> 9) & 0x0f;
-      auto day = (date >> 4) & 0x1f;
-      auto year = date & 0x1f;
-
-      year += 1972 + 32 * age;
-
-      cout << " " 
-        << setw(4) << year
-        << "-"
-        << setw(2) << setfill('0') << month - 1
-        << "-"
-        << setw(2) << setfill('0') << day;
-    }
-
-    cout << " ";
-    cout << ((status & Dir::E_TENT) ? "TEN" : "   ");
-    cout << " ";
-    cout << ((status & Dir::E_MPTY) ? "MPT" : "   ");
-    cout << " ";
-    cout << ((status & Dir::E_PERM) ? "PRM" : "   ");
-    cout << " ";
-    cout << ((status & Dir::E_EOS) ? "EOS" : "  ");
-    cout << " ";
-    cout << ((status & Dir::E_READ) ? "RDO" : "   ");
-    cout << " ";
-    cout << ((status & Dir::E_PROT) ? "PRT" : "   ");
-    cout << " ";
-    cout << ((status & Dir::E_PRE) ? "PRE" : "   ");
-
-    cout << endl;
-  }
 }
 
 

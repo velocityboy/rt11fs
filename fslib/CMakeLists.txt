@@ -6,7 +6,6 @@ add_library (fslib
   DirPtr.cpp
   FileDataSource.cpp
   FileSystem.cpp
-  LogUnimpl.cpp
   MemoryDataSource.cpp
   OpenFileTable.cpp
   Rad50.cpp
@@ -27,4 +26,3 @@ elseif(LINUX)
 	target_include_directories(fslib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 	target_link_libraries(fslib ${FUSE3_LIBRARIES})
 endif()
-
