@@ -15,8 +15,8 @@ ExternalProject_Add(
 )
 find_package(GTest REQUIRED)
 
-if(MACOS)
-	add_definitions(-DFUSE_USE_VERSION=26)
+if(APPLE)
+	add_definitions(-DFUSE_USE_VERSION=30)
 	add_definitions(-D_FILE_OFFSET_BITS=64)
 	add_definitions(-D_DARWIN_USE_64_BIT_INODE)
 endif()

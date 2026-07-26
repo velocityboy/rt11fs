@@ -2,7 +2,7 @@
 // MIT license as described in the file LICENSE.txt.
 
 #include "FileSystem.h"
-#include "fuse.h"
+#include <fuse3/fuse.h>
 
 #include <cstddef>
 #include <string>
@@ -23,32 +23,22 @@ namespace
         return reinterpret_cast<FileSystem*>(fuse_get_context()->private_data);
     }
 
-#if FUSE_USE_VERSION==30
     auto rt11_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi) -> int
-#else
-    auto rt11_getattr(const char *path, struct stat *stbuf) -> int
-#endif
     {
         return getFS()->getattr(path, stbuf);
     }
 
-#if FUSE_USE_VERSION<30
     auto rt11_fgetattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi) -> int
     {
         return getFS()->fgetattr(path, stbuf, fi);
     }
-#endif
 
     auto rt11_statfs(const char *path, struct statvfs *vfs) -> int
     {
         return getFS()->statfs(path, vfs);
     }
 
-#if FUSE_USE_VERSION<30
-    auto rt11_chmod(const char *path, mode_t mode) -> int
-#else
     auto rt11_chmod(const char *path, mode_t mode, fuse_file_info*) -> int
-#endif
     {
         return getFS()->chmod(path, mode);
     }
@@ -58,22 +48,13 @@ namespace
         return getFS()->unlink(path);
     }
 
-#if FUSE_USE_VERSION<30
-    auto rt11_rename(const char *oldName, const char *newName) -> int
-#else
     auto rt11_rename(const char *oldName, const char *newName, unsigned int flags) -> int
-#endif
     {
         return getFS()->rename(oldName, newName);
     }
 
-#if FUSE_USE_VERSION<30
-    auto rt11_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-    off_t offset, struct fuse_file_info *fi) -> int
-#else
     auto rt11_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     off_t offset, struct fuse_file_info *fi, enum fuse_readdir_flags flags) -> int
-#endif
     {
         return getFS()->readdir(path, buf, filler, offset, fi);
     }
@@ -93,12 +74,10 @@ namespace
         return getFS()->release(path, fi);
     }
 
-#if FUSE_USE_VERSION<30
     auto rt11_ftruncate(const char *path, off_t size, struct fuse_file_info *fi) -> int
     {
         return getFS()->ftruncate(path, size, fi);
     }
-#endif
 
     auto rt11_read(const char *path, char *buf, size_t count, off_t offset, struct fuse_file_info *fi) -> int
     {
@@ -181,11 +160,7 @@ auto main(int argc, char *argv[]) -> int
     FileSystem fs {config.image};
 
     build_oper(&rt11_oper);
-#if defined(__APPLE__)
     exitcode = fuse_main(args.argc, args.argv, &rt11_oper, &fs);
-#elif defined(__linux__)
-    exitcode = fuse_main(args.argc, args.argv, &rt11_oper, &fs);
-#endif
 
     fuse_opt_free_args(&args);
     return exitcode;

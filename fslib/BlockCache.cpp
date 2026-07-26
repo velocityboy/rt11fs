@@ -86,7 +86,7 @@ auto BlockCache::getBlock(int sector, int count) -> Block *
   auto bp = new Block {sector, count};
   bp->read(dataSource);
 
-  blocks.insert(cacheIter, move(unique_ptr<Block>{bp}));
+  blocks.insert(cacheIter, std::move(unique_ptr<Block>{bp}));
   return bp;
 }
 

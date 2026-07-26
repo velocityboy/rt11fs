@@ -158,23 +158,14 @@ auto FileSystem::readdir(
     if (p != "/") {
       return -ENOENT;
     }
-#if defined(__APPLE__)
-    filler(buf, ".", NULL, 0);
-    filler(buf, "..", NULL, 0);
-#elif defined(__linux__)
     filler(buf, ".", NULL, 0, FUSE_FILL_DIR_PLUS);
     filler(buf, "..", NULL, 0, FUSE_FILL_DIR_PLUS);
-#endif
 
     auto scan = directory->startScan();
     while (directory->moveNextFiltered(scan, Dir::E_PERM)) {
       auto ent = DirEnt {};
       if (directory->getEnt(scan, ent)) {
-#if defined(__APPLE__)
-        filler(buf, ent.name.c_str(), NULL, 0);
-#elif defined(__linux__)
         filler(buf, ent.name.c_str(), NULL, 0, FUSE_FILL_DIR_PLUS);
-#endif
       }
     }
 
