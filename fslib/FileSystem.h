@@ -8,7 +8,7 @@
 #if defined(__linux__)
   #include <fuse3/fuse.h>
 #else
-  #include <fuse.h>
+  #include <fuse3/fuse.h>
 #endif
 #include <memory>
 #include <string>

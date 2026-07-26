@@ -6,11 +6,12 @@ add_executable (rt11fs
 
 add_definitions(-D_FILE_OFFSET_BITS=64)
 
-if (MACOS)
-	add_definitions(-DFUSE_USE_VERSION=26)
+if (APPLE)
+	add_definitions(-DFUSE_USE_VERSION=30)
+	add_definitions(-DFUSE_DARWIN_ENABLE_EXTENSIONS=0)
 	include_directories(/usr/local/include)
 	add_definitions(-D_DARWIN_USE_64_BIT_INODE)
-	target_link_libraries(rt11fs LINK_PUBLIC osxfuse fslib)
+	target_link_libraries(rt11fs LINK_PUBLIC fslib ${FUSE_LIBRARIES} fuse3)
 elseif(LINUX)
 	add_definitions(-DFUSE_USE_VERSION=30)
 	find_package(PkgConfig REQUIRED)

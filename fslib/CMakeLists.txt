@@ -11,12 +11,12 @@ add_library (fslib
   Rad50.cpp
 )
 
-if (MACOS)
-	add_definitions(-DFUSE_USE_VERSION=26)
+if (APPLE)
+	add_definitions(-DFUSE_USE_VERSION=30)
 	add_definitions(-D_FILE_OFFSET_BITS=64)
 	add_definitions(-D_DARWIN_USE_64_BIT_INODE)
 
-	include_directories(/usr/local/include)
+	target_include_directories(fslib PUBLIC /usr/local/include)
 	target_include_directories(fslib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 elseif(LINUX)
 	add_definitions(-DFUSE_USE_VERSION=30)
